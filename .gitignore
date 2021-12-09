@@ -2,7 +2,6 @@
 build/*
 bin/*
 
+# 忽略
 .gitignore
 .vscode
-
-# hello
