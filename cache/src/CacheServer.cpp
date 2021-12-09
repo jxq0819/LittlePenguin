@@ -119,13 +119,6 @@ void CacheServer::existConnection(int event_i) {
     });
 }
 
-int CacheServer::setnonblocking(int fd) {
-    int old_option = fcntl(fd, F_GETFL);
-    int new_option = old_option | O_NONBLOCK;
-    fcntl(fd, F_SETFL, new_option);
-    return old_option;
-}
-
 // 解析数据包
 bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
     // 判断数据类型，分类处理

@@ -3,8 +3,11 @@
 #include <netinet/ip.h>
 #include <strings.h>
 #include <sys/epoll.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include <iostream>
+//#include <sstream>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -20,6 +23,9 @@ class TcpServer {
     explicit TcpServer(int maxWaiter = 10);  // 默认客户端最大连接个数为10
 
     bool bindAndListen(int _port = 6666);  // 默认端口为6666
+
+    // 将(socket)文件描述符设置成非阻塞
+    int setnonblocking(int fd);
 
     // 处理新的连接函数，此处为纯虚函数，具体由子类实现
     virtual void newConnection() = 0;

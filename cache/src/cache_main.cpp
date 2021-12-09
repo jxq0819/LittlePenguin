@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
     CacheServer myServer;
 
     /* ---------------------与master建立持久连接发送心跳--------------------- */
+    //
     // 注册master主机地址信息
     const char* master_ip = argv[2];              // master主机ip
     const u_int16_t master_port = atoi(argv[3]);  // master主机port
@@ -33,7 +34,10 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     myServer.beginHeartbeatThread(master_addr);  // 启动心跳线程
+    //
+    /* ---------------------------------------------------------------------- */
 
+    // 绑定自身主机信息和设置监听上限
     std::cout << "-------------------------------------------" << std::endl;
     std::cout << "Cache program started..." << std::endl;
     if (!myServer.bindAndListen(myport)) {

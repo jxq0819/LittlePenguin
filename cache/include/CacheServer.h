@@ -15,8 +15,6 @@ class CacheServer : public TcpServer {
     // 子类 纯虚函数实现
     void newConnection() override;
     void existConnection(int fd) override;
-    // 将(socket)文件描述符设置成非阻塞
-    int setnonblocking(int fd);
     // 解析CMC数据包
     bool parseData(const CMCData& recv_data, CMCData& response_data);
     // 开始心跳线程
