@@ -58,7 +58,8 @@ message AckInfo {
     NULLACK = 0;
     SETACK = 1;
     DELACK = 2;
-    CACHEUPDATEACK = 3;
+    CACHEUPDATEACK = 3;   // cache发送已数据迁移完成
+    OFFLINEACK = 4; // master发送批准cache下线
   }
   enum AckStatus {
     NULLSTATUS = 0;

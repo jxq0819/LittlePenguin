@@ -1,22 +1,5 @@
 #include "CacheServer.h"
 
-#include <fcntl.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <zconf.h>
-
-#include <ctime>
-
-#include "cmcdata.pb.h"
-// #include <fstream>
-#include <unistd.h>
-
-#include <iostream>
-#include <string>
-
-using namespace std;
-
 // CacheServer构造函数，设置客户端最大连接个数, LRU链表容量
 CacheServer::CacheServer(int maxWaiter) : TcpServer(maxWaiter) {
     // 线程池预先开启8个线程
@@ -160,11 +143,12 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
             return false;
         }
 
-        cout << "heartbeart thread connect master server success!" << endl;
+        // cout << "heartbeart thread connect master server success!" << endl;
 
         char heart_send_buff[BUFSIZ];
         HeartInfo heart_info;
         // 定时发送心跳给master
+        bool print_success_msg = true;  // 第一次心跳发送成功时打印成功的消息，后续不打印
         while (1) {
             /*-------------制作心跳包并序列化-------------*/
             heart_info.set_cur_time(time(NULL));
@@ -180,7 +164,10 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
             /*-------------向master端发送心跳数据-------------*/
             int send_size = send(heart_sock, heart_send_buff, data_size, 0);
             // cout << "heart_send_size: " << send_size << endl;
-            if (send_size < 0) {
+            if (send_size > 0 && print_success_msg) {
+                cout << "Heartbeat thread started successfully!" << send_size << endl;
+                print_success_msg = false;
+            } else if (send_size < 0) {
                 std::cout << "heartbeat sending failed!" << std::endl;
                 return false;
             }

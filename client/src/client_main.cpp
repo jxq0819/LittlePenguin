@@ -135,8 +135,8 @@ int main(int argc, char* argv[]) {
             CMCData recv_data;
             recv_data.ParseFromArray(recv_buf_max, recv_size);
             // 处理数据
-            // string recv_info_str = recv_data.DebugString();
-            // cout << recv_info_str << endl;
+            //string recv_info_str = recv_data.DebugString();
+            //cout << recv_info_str << endl;
             switch (recv_data.data_type()) {
                 // 如果真的是哈希槽信息包，那就更新哈希槽
                 case CMCData::HASHSLOTINFO:

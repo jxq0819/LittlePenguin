@@ -7,7 +7,6 @@
 #include <fcntl.h>
 
 #include <iostream>
-//#include <sstream>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -29,7 +28,6 @@ class TcpServer {
 
     // 处理新的连接函数，此处为纯虚函数，具体由子类实现
     virtual void newConnection() = 0;
-
     // 处理已经存在的连接的函数，此处为纯虚函数，具体由子类实现
     virtual void existConnection(int sockfd) = 0;
 

@@ -1,11 +1,23 @@
 #pragma once
 
 #include <cmcdata.pb.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <zconf.h>
+
+#include <ctime>
+#include <iostream>
+#include <string>
 
 #include "LRUCache.h"
 #include "TcpServer.h"
 #include "ThreadPool.hpp"
+#include "cmcdata.pb.h"
 
+using namespace std;
 
 class CacheServer : public TcpServer {
   public:
@@ -20,7 +32,7 @@ class CacheServer : public TcpServer {
     // 开始心跳线程
     bool beginHeartbeatThread(const struct sockaddr_in& master_addr);
     // inline void setCacheStatus(bool&& s) {m_cache_status = s;};
-    // inline bool getCacheStatus() {return m_cache_status;};
+    // inline bool getCacheSatus() {return m_cache_status;};
 
   private:
     std::unique_ptr<ThreadPool> threadPool;  // 测试用，暂时8个线程

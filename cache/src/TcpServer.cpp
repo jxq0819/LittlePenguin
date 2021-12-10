@@ -28,16 +28,6 @@ int TcpServer::setnonblocking(int fd) {
 
 // 服务器服务函数
 bool TcpServer::startService(int timeout) {
-    // 注册管理员标准输入事件（主要是应对cache下线管理）
-    epoll_event ev1;
-    bzero(&ev1, sizeof(ev1));
-    setnonblocking(STDIN_FILENO);
-    ev1.data.fd = STDIN_FILENO;
-    ev1.events = EPOLLIN | EPOLLET;  // ET模式
-    if (epoll_ctl(m_epfd, EPOLL_CTL_ADD, STDIN_FILENO, &ev1) < 0) {
-        return false;
-    }
-
     // 新建一个事件结构体，并注册新连接事件：
     epoll_event ev2;
     bzero(&ev2, sizeof(ev2));
@@ -53,14 +43,13 @@ bool TcpServer::startService(int timeout) {
     while (true) {
         int nfds = epoll_wait(m_epfd, m_epollEvents, MAX_EVENTS, timeout);
         if (nfds < 0) {
+            if (errno == EINTR) continue;   // epoll_wait被信号中断会返回-1，且errno为EINTR，此时继续选择监听
+            printf("epoll_wait error!\n");
             return false;
         }
 
         for (int i = 0; i < nfds; ++i) {
-            if (m_epollEvents[i].data.fd == STDIN_FILENO) {
-                // 处理键盘标准输入事件
-                
-            } else if (m_epollEvents[i].data.fd == m_listen_sockfd) {
+            if (m_epollEvents[i].data.fd == m_listen_sockfd) {
                 // 处理新的连接
                 newConnection();
             } else {
