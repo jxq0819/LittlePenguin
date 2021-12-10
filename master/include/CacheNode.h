@@ -9,7 +9,8 @@
 class CacheNode {
     friend class HashSlot;
 public:
-    CacheNode(std::string n, std::string ip = "", int p = 0): name_(n), ip_(ip), port_(p) { }
+    CacheNode(std::string ip, int p): ip_(ip), port_(p) { name_ = ip_ + std::to_string(port_); }
+    // CacheNode(std::string n, std::string ip, int p): name_(n), ip_(ip), port_(p) { }
     std::string name() const { return name_; }
     std::string ip() const { return ip_; }
     int port() const { return port_; }
