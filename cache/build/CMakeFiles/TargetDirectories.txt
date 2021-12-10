@@ -1,0 +1,3 @@
+/home/test/dc/LittlePenguin/cache/build/CMakeFiles/rebuild_cache.dir
+/home/test/dc/LittlePenguin/cache/build/CMakeFiles/cache_server.out.dir
+/home/test/dc/LittlePenguin/cache/build/CMakeFiles/edit_cache.dir
