@@ -172,12 +172,13 @@ enum AckInfo_AckType : int {
   AckInfo_AckType_SETACK = 1,
   AckInfo_AckType_DELACK = 2,
   AckInfo_AckType_HASHSLOTUPDATEACK = 3,
+  AckInfo_AckType_OFFLINEACK = 4,
   AckInfo_AckType_AckInfo_AckType_INT_MIN_SENTINEL_DO_NOT_USE_ = std::numeric_limits<int32_t>::min(),
   AckInfo_AckType_AckInfo_AckType_INT_MAX_SENTINEL_DO_NOT_USE_ = std::numeric_limits<int32_t>::max()
 };
 bool AckInfo_AckType_IsValid(int value);
 constexpr AckInfo_AckType AckInfo_AckType_AckType_MIN = AckInfo_AckType_NULLACK;
-constexpr AckInfo_AckType AckInfo_AckType_AckType_MAX = AckInfo_AckType_HASHSLOTUPDATEACK;
+constexpr AckInfo_AckType AckInfo_AckType_AckType_MAX = AckInfo_AckType_OFFLINEACK;
 constexpr int AckInfo_AckType_AckType_ARRAYSIZE = AckInfo_AckType_AckType_MAX + 1;
 
 const ::PROTOBUF_NAMESPACE_ID::EnumDescriptor* AckInfo_AckType_descriptor();
@@ -1367,6 +1368,8 @@ class AckInfo final :
     AckInfo_AckType_DELACK;
   static constexpr AckType HASHSLOTUPDATEACK =
     AckInfo_AckType_HASHSLOTUPDATEACK;
+  static constexpr AckType OFFLINEACK =
+    AckInfo_AckType_OFFLINEACK;
   static inline bool AckType_IsValid(int value) {
     return AckInfo_AckType_IsValid(value);
   }

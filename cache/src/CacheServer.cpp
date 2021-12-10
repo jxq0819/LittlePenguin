@@ -131,6 +131,7 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
     return false;
 }
 
+// 心跳线程函数
 bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
     auto enqueue_ret = threadPool->enqueue([this, &master_addr]() {
         /* ---------------------与master建立持久心跳连接--------------------- */

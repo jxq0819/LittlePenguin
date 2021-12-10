@@ -228,24 +228,24 @@ const char descriptor_table_protodef_cmcdata_2eproto[] PROTOBUF_SECTION_VARIABLE
   "(\t\022\r\n\005value\030\002 \001(\t\"|\n\tHeartInfo\022\020\n\010cur_ti"
   "me\030\001 \001(\005\022,\n\014cache_status\030\002 \001(\0162\026.HeartIn"
   "fo.CacheStatus\"/\n\013CacheStatus\022\016\n\nNULLSTA"
-  "TUS\020\000\022\006\n\002OK\020\001\022\010\n\004FAIL\020\002\"\310\001\n\007AckInfo\022\"\n\010a"
+  "TUS\020\000\022\006\n\002OK\020\001\022\010\n\004FAIL\020\002\"\333\001\n\007AckInfo\022\"\n\010a"
   "ck_type\030\001 \001(\0162\020.AckInfo.AckType\022&\n\nack_s"
-  "tatus\030\002 \001(\0162\022.AckInfo.AckStatus\"B\n\007AckTy"
+  "tatus\030\002 \001(\0162\022.AckInfo.AckStatus\"U\n\007AckTy"
   "pe\022\013\n\007NULLACK\020\000\022\n\n\006SETACK\020\001\022\n\n\006DELACK\020\002\022"
-  "\022\n\016CACHEUPDATEACK\020\003\"-\n\tAckStatus\022\016\n\nNULL"
-  "STATUS\020\000\022\006\n\002OK\020\001\022\010\n\004FAIL\020\002\"\247\002\n\007CMCData\022$"
-  "\n\tdata_type\030\001 \001(\0162\021.CMCData.DataType\022\036\n\007"
-  "hs_info\030\002 \001(\0132\r.HashSlotInfo\022\036\n\010cmd_info"
-  "\030\003 \001(\0132\014.CommandInfo\022\030\n\007kv_data\030\004 \001(\0132\007."
-  "KvData\022\033\n\007ht_info\030\005 \001(\0132\n.HeartInfo\022\032\n\010a"
-  "ck_info\030\006 \001(\0132\010.AckInfo\"c\n\010DataType\022\014\n\010N"
-  "ULLTYPE\020\000\022\017\n\013COMMANDINFO\020\001\022\n\n\006KVDATA\020\002\022\020"
-  "\n\014HASHSLOTINFO\020\003\022\r\n\tHEARTINFO\020\004\022\013\n\007ACKIN"
-  "FO\020\005b\006proto3"
+  "\025\n\021HASHSLOTUPDATEACK\020\003\022\016\n\nOFFLINEACK\020\004\"-"
+  "\n\tAckStatus\022\016\n\nNULLSTATUS\020\000\022\006\n\002OK\020\001\022\010\n\004F"
+  "AIL\020\002\"\247\002\n\007CMCData\022$\n\tdata_type\030\001 \001(\0162\021.C"
+  "MCData.DataType\022\036\n\007hs_info\030\002 \001(\0132\r.HashS"
+  "lotInfo\022\036\n\010cmd_info\030\003 \001(\0132\014.CommandInfo\022"
+  "\030\n\007kv_data\030\004 \001(\0132\007.KvData\022\033\n\007ht_info\030\005 \001"
+  "(\0132\n.HeartInfo\022\032\n\010ack_info\030\006 \001(\0132\010.AckIn"
+  "fo\"c\n\010DataType\022\014\n\010NULLTYPE\020\000\022\017\n\013COMMANDI"
+  "NFO\020\001\022\n\n\006KVDATA\020\002\022\020\n\014HASHSLOTINFO\020\003\022\r\n\tH"
+  "EARTINFO\020\004\022\013\n\007ACKINFO\020\005b\006proto3"
   ;
 static ::PROTOBUF_NAMESPACE_ID::internal::once_flag descriptor_table_cmcdata_2eproto_once;
 const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_cmcdata_2eproto = {
-  false, false, 1172, descriptor_table_protodef_cmcdata_2eproto, "cmcdata.proto", 
+  false, false, 1191, descriptor_table_protodef_cmcdata_2eproto, "cmcdata.proto", 
   &descriptor_table_cmcdata_2eproto_once, nullptr, 0, 7,
   schemas, file_default_instances, TableStruct_cmcdata_2eproto::offsets,
   file_level_metadata_cmcdata_2eproto, file_level_enum_descriptors_cmcdata_2eproto, file_level_service_descriptors_cmcdata_2eproto,
@@ -343,6 +343,7 @@ bool AckInfo_AckType_IsValid(int value) {
     case 1:
     case 2:
     case 3:
+    case 4:
       return true;
     default:
       return false;
@@ -353,7 +354,8 @@ bool AckInfo_AckType_IsValid(int value) {
 constexpr AckInfo_AckType AckInfo::NULLACK;
 constexpr AckInfo_AckType AckInfo::SETACK;
 constexpr AckInfo_AckType AckInfo::DELACK;
-constexpr AckInfo_AckType AckInfo::CACHEUPDATEACK;
+constexpr AckInfo_AckType AckInfo::HASHSLOTUPDATEACK;
+constexpr AckInfo_AckType AckInfo::OFFLINEACK;
 constexpr AckInfo_AckType AckInfo::AckType_MIN;
 constexpr AckInfo_AckType AckInfo::AckType_MAX;
 constexpr int AckInfo::AckType_ARRAYSIZE;

@@ -47,6 +47,7 @@ class CacheServer : public TcpServer {
 
     // 执行相应的命令
     bool executeCommand(const CommandInfo& cmd_info, CMCData& response_data);
+    
     // 数据迁移处理函数
     bool dataMigration();
 };

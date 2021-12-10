@@ -125,7 +125,8 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
 
     // 发送后等待master返回HashSlotInfo
     // 然后读取哈希槽信息
-    // (假如是第一次getslot则会收到包含全部cache节点的信息，以后client要是再getslot，master只会返回单个节点的增减信息)
+    // 假如是第一次getslot则会收到包含全部cache节点的信息
+    // 以后client要是再getslot，master只会返回单个节点的增减信息(虽然说client查不到去getslot的可能性很低)
     char recv_buf_max[MAX_BUF_SIZE];
     memset(recv_buf_max, 0, sizeof(recv_buf_max));
     int recv_size = recv(master_fd, recv_buf_max, MAX_BUF_SIZE, 0);
@@ -156,7 +157,10 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
                 }
                 // 如果是单个节点的减少，则先新建一个CacheNode对象，然后查询本地槽是否有该对象并删除
                 case HashSlotInfo::REMCACHE: {
-                    slot.remCacheNode(这里需要传入一个CacheNode的对象);
+                    string node_ip = slot_cmc_data.hs_info().cache_node().ip();
+                    int node_port = slot_cmc_data.hs_info().cache_node().port();
+                    // 下面这行需要等子晨大哥修改CacheNode.h的remCacheNode参数后再打开！
+                    //slot.remCacheNode(node_ip, node_port);
                     break;
                 }
                 default:
@@ -165,6 +169,7 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
         }
 
         // 回复master HASHSLOTUPDATEACK哈希槽更新完毕确认包
+
     }
     return true;
 }
