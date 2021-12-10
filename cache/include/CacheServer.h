@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 
+#include "HashSlot.h"
 #include "LRUCache.h"
 #include "TcpServer.h"
 #include "ThreadPool.hpp"
@@ -37,8 +38,15 @@ class CacheServer : public TcpServer {
   private:
     std::unique_ptr<ThreadPool> threadPool;  // 测试用，暂时8个线程
     LRUCache m_cache;                        // CacheServer类内LRU表
-    bool m_cache_status;                     // cache状态默认是良好的，cache发生错误的时候，会把这个状态设置成false
+
+    HashSlot m_hashslot;      // CacheServer本地哈希槽
+    HashSlot m_hashslot_new;  // CacheServer本地最新哈希槽，当完成数据迁移后需要赋值给m_hashslot
+    bool m_is_migrating;      // cache是否在数据迁移状态，默认没有正在进行数据迁移
+
+    bool m_cache_status;  // cache状态默认是良好的，cache发生错误的时候，会把这个状态设置成false
 
     // 执行相应的命令
     bool executeCommand(const CommandInfo& cmd_info, CMCData& response_data);
+    // 数据迁移处理函数
+    bool dataMigration();
 };

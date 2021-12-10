@@ -127,7 +127,6 @@ int main(int argc, char* argv[]) {
         }
 
         /* -------- 发生对端套接字输入事件(一般是来自master主动哈希槽更新通知)，遇到这种情况，需要更新本地哈希槽 --------- */
-        //此处暂时先暂时把收到的信息打印出来
         if (fd_array[1].revents & POLLIN) {
             // 接受数据
             bzero(recv_buf_max, sizeof(recv_buf_max));
@@ -140,7 +139,9 @@ int main(int argc, char* argv[]) {
             switch (recv_data.data_type()) {
                 // 如果真的是哈希槽信息包，那就更新哈希槽
                 case CMCData::HASHSLOTINFO:
+
                     hashslot.restoreFrom(recv_data.hs_info());
+
                     break;
                 default:
                     break;
@@ -198,7 +199,6 @@ int main(int argc, char* argv[]) {
             } else if ((command == "DEL" || command == "del") && param_count == 2) {
                 my_cmc_data = MakeCommandData(CommandInfo::DEL, param_1, "");
             }
-
             strcpy(cache_ip, hashslot.getCacheAddr(param_1).first.c_str());  // 从hashslot中查询cache地址
             cache_port = hashslot.getCacheAddr(param_1).second;
             cout << "will SendCommandData" << endl;

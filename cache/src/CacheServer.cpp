@@ -4,8 +4,10 @@
 CacheServer::CacheServer(int maxWaiter) : TcpServer(maxWaiter) {
     // 线程池预先开启8个线程
     threadPool = std::make_unique<ThreadPool>(10);
-    // cache状态默认是良好的，cache发生错误的时候，会把这个状态设置成false
-    m_cache_status = true;
+    //
+    m_is_migrating = false;  // 默认没有正在进行数据迁移
+
+    m_cache_status = true;  // cache状态默认是良好的，cache发生错误的时候，会把这个状态设置成false
 }
 
 void CacheServer::newConnection() {
@@ -34,6 +36,7 @@ void CacheServer::newConnection() {
     setnonblocking(connfd);  // 设置与对端连接的socket文件描述符为非堵塞模式
 }
 
+// 现有的连接发生事件，说明对端有传递“信息”过来，虽然有可能是空消息
 void CacheServer::existConnection(int event_i) {
     std::cout << "-------------------------------------------" << std::endl;
     std::cout << "deal existed connection" << std::endl;
@@ -117,8 +120,9 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
         } break;
 
         // 如果是哈希槽信息包，则根据新的哈希槽进行数据迁移
+        //（有可能是整个槽的信息，也有可能是某个节点的增减信息）
         case CMCData::HASHSLOTINFO: {
-            ;
+            return dataMigration();
         } break;
 
         default:
@@ -179,6 +183,7 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
 }
 
 // 执行相应的命令
+// 传入命令信息，传出回复数据包
 bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_data) {
     switch (cmd_info.cmd_type()) {
         /*----------------------------- GET -----------------------------*/
@@ -243,7 +248,7 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                 bool del_ret;
                 {
                     std::lock_guard<std::mutex> lock_g(this->m_mutex);  // 为m_cache.deleteKey操作上锁
-                    del_ret = m_cache.deleteKey(key);
+                    del_ret = m_cache.deleteKey(key);                   // 删除k-v键值对
                 }
 
                 // 定义一个确认包
@@ -267,4 +272,10 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
         default:
             return false;
     }
+}
+
+// 数据迁移处理函数
+
+bool CacheServer::dataMigration(const HashSlotInfo &hs_info, CMCData &response_data) {
+    ;
 }

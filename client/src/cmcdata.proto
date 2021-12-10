@@ -58,7 +58,8 @@ message AckInfo {
     NULLACK = 0;
     SETACK = 1;
     DELACK = 2;
-    CACHEUPDATEACK = 3;
+    //CACHEUPDATEACK = 3;
+    HASHSLOTUPDATEACK = 3;
   }
   enum AckStatus {
     NULLSTATUS = 0;

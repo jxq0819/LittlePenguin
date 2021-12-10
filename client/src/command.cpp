@@ -24,7 +24,6 @@ CMCData MakeCommandData(const ::CommandInfo_CmdType cmd_type, const string& para
 
 /*----------------------------------- 发送命令数据 -----------------------------------*/
 bool SendCommandData(const CMCData& cmc_data, const char* dst_ip, u_int16_t dst_port) {
-
     char send_buff[BUFSIZ];
     bzero(send_buff, BUFSIZ);
 
@@ -124,7 +123,9 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
         return false;
     }
 
-    // 发送后等待master返回HashSlotInfo，读取哈希槽信息
+    // 发送后等待master返回HashSlotInfo
+    // 然后读取哈希槽信息
+    // (假如是第一次getslot则会收到包含全部cache节点的信息，以后client要是再getslot，master只会返回单个节点的增减信息)
     char recv_buf_max[MAX_BUF_SIZE];
     memset(recv_buf_max, 0, sizeof(recv_buf_max));
     int recv_size = recv(master_fd, recv_buf_max, MAX_BUF_SIZE, 0);
@@ -136,7 +137,34 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
         // 更新本地hashslot
         CMCData slot_cmc_data;
         slot_cmc_data.ParseFromArray(recv_buf_max, sizeof(recv_size));
-        slot.restoreFrom(slot_cmc_data.hs_info());
+        // 确认收到的是哈希槽信息包，则进行进一步解包操作
+        if (slot_cmc_data.data_type() == CMCData::HASHSLOTINFO) {
+            switch (slot_cmc_data.hs_info().hashinfo_type()) {
+                // 如果是所有节点的槽信息，则通过restore建立本地hashslot
+                case HashSlotInfo::ALLCACHEINFO: {
+                    slot.restoreFrom(slot_cmc_data.hs_info());
+                    break;
+                }
+                // 如果是单个节点的增加，则先新建一个CacheNode对象，然后再加到本地槽中
+                case HashSlotInfo::ADDCACHE: {
+                    // CacheNode(std::string n, std::string ip = "", int p = 0)
+                    string node_ip = slot_cmc_data.hs_info().cache_node().ip();
+                    int node_port = slot_cmc_data.hs_info().cache_node().port();
+                    CacheNode node(node_ip, node_port);
+                    slot.addCacheNode(node);
+                    break;
+                }
+                // 如果是单个节点的减少，则先新建一个CacheNode对象，然后查询本地槽是否有该对象并删除
+                case HashSlotInfo::REMCACHE: {
+                    slot.remCacheNode(这里需要传入一个CacheNode的对象);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+
+        // 回复master HASHSLOTUPDATEACK哈希槽更新完毕确认包
     }
     return true;
 }
