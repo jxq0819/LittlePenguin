@@ -15,7 +15,7 @@ struct HeartbeatInfo {
 };
 
 #define TASK_ADD 0
-#define TASK_DEL 1
+#define TASK_REM 1
 
 typedef std::pair<std::string, int> AddrPair;   // {ip, port} pair, used to identify each connection
 struct addrHasher { 
@@ -53,3 +53,6 @@ private:
     static void startHeartbeartService(MasterServer*);
     static void startHashslotService(MasterServer*);
 };
+
+// Utillity functions (Should be in a seperate header ?)
+bool checkAckInfo(int sockfd, int ackType);
