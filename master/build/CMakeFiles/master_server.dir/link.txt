@@ -1,1 +1,0 @@
-/usr/bin/c++ -pthread -g CMakeFiles/master_server.dir/src/HashSlot.cc.o CMakeFiles/master_server.dir/src/MasterServer.cpp.o CMakeFiles/master_server.dir/src/TcpServer.cpp.o CMakeFiles/master_server.dir/src/TcpSocket.cpp.o CMakeFiles/master_server.dir/src/cmcdata.pb.cc.o CMakeFiles/master_server.dir/src/master_main.cpp.o -o ../bin/master_server  -lprotobuf 

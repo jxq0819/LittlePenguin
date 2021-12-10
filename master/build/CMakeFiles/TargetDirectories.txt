@@ -1,3 +1,0 @@
-/home/test/dc/LittlePenguin/master/build/CMakeFiles/rebuild_cache.dir
-/home/test/dc/LittlePenguin/master/build/CMakeFiles/master_server.dir
-/home/test/dc/LittlePenguin/master/build/CMakeFiles/edit_cache.dir
