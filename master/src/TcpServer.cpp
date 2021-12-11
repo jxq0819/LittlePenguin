@@ -38,7 +38,10 @@ bool TcpServer::startService(int timeout) { // timeout默认声明了timeout = -
     while (1) {
         // 等待事件发生
         int event_cnt = epoll_wait(m_epfd, m_epollEvents, MAX_EVENTS, timeout);
-        if (event_cnt < 0) return false;
+        if (event_cnt < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
         // 事件发生，遍历m_epollEvents队列中的事件，并分类处理
         for (int i = 0; i < event_cnt; ++i) {
             // 对于新连接请求，则调用新连接处理函数
