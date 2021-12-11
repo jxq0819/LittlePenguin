@@ -6,6 +6,8 @@
 
 #include <cassert>
 
+#include "crc16.h"
+
 HashSlot::HashSlot(const HashSlot& hs): num_nodes_(hs.num_nodes_), node_list_(hs.node_list_)
 {                                                       // Copy initialise the node list
     for (auto &node : node_list_) {                     // Initialise HashSlot.slots_
@@ -152,6 +154,19 @@ void HashSlot::restoreFrom(const HashSlotInfo &hash_slot_info)
             slots_[cur] = &node;
         }
     }
+}
+
+std::pair<std::string, int> HashSlot::getCacheAddr(const std::string key) {
+    char key_c_str[BUFSIZ];
+    strcpy(key_c_str, key.c_str());
+    uint16_t slot_index = crc16(key_c_str, strlen(key_c_str)) % 16384;
+    std::string cache_ip = "";
+    int cache_port = 0;
+    if (slots_[slot_index] != nullptr) {
+        cache_ip = slots_[slot_index]->ip();
+        cache_port = slots_[slot_index]->port();
+    }
+    return std::make_pair(cache_ip, cache_port);
 }
 
 // Interface
