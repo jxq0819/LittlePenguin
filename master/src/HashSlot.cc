@@ -19,8 +19,7 @@ HashSlot::HashSlot(const HashSlot& hs): num_nodes_(hs.num_nodes_), node_list_(hs
 HashSlot::HashSlot(const HashSlotInfo &hash_slot_info): num_nodes_(hash_slot_info.cache_nodes_size())
 {
     for (int i = 0; i < num_nodes_; ++i) {
-        node_list_.push_back(CacheNode(hash_slot_info.cache_nodes(i).name(),
-                                        hash_slot_info.cache_nodes(i).ip(),
+        node_list_.push_back(CacheNode(hash_slot_info.cache_nodes(i).ip(),
                                         hash_slot_info.cache_nodes(i).port()));
         const std::string &str = hash_slot_info.cache_nodes(i).slots();
         for (int j = 0; j < HASHSLOT_SIZE/8; ++j) {
@@ -75,7 +74,7 @@ void HashSlot::addCacheNode(const CacheNode &node)
         int change_count = node_index < residue ? it->numslots() - (num_slots_per_node + 1) : it->numslots() - num_slots_per_node;
         assert(change_count >= 0);                  // 16384个Node后再添加服务器时报错
         for (int i = 0; i < change_count; ++i) {
-            auto cur = it->slots_._Find_first();    // Position of the 1(slot) to be modified
+            auto cur = it->slots_._Find_first();    // Position of the covered slot to be modified
             it->slots_.reset(cur);
             node_list_.back().slots_.set(cur);
             slots_[cur] = &node_list_.back();
@@ -104,7 +103,7 @@ void HashSlot::remCacheNode(const CacheNode &node)
         int change_count = node_index < residue ? (num_slots_per_node + 1) - it->numslots() : num_slots_per_node - it->numslots();
         // assert(change_count >= 0);
         for (int i = 0; i < change_count; ++i) {
-            auto cur = temp.slots_._Find_first();    // Position of the 1(slot) to be modified
+            auto cur = temp.slots_._Find_first();    // Position of the covered slot to be modified
             temp.slots_.reset(cur);
             it->slots_.set(cur);
             slots_[cur] = &*it;
@@ -116,7 +115,7 @@ void HashSlot::saveTo(HashSlotInfo &hash_slot_info) const
 {
     for (auto &node : node_list_) {
         auto node_info = hash_slot_info.add_cache_nodes();
-        node_info->set_name(node.name());
+        // node_info->set_name(node.name());
         node_info->set_ip(node.ip());
         node_info->set_port(node.port());
         // set the slots
@@ -124,7 +123,7 @@ void HashSlot::saveTo(HashSlotInfo &hash_slot_info) const
         for (int i = 0; i < HASHSLOT_SIZE/8; ++i) {
             char temp = 0;
             for (int j = 0; j < 8; ++j) {
-                temp += node.slots_[8*i + j] << (7-j);      // Start from the left-most bit
+                temp += node.slots_[8*i + j] << (7-j);      // Convert each consecutive 8 bits into a 1-byte char
             }
             slots_ptr->push_back(temp);
         }
@@ -134,10 +133,9 @@ void HashSlot::saveTo(HashSlotInfo &hash_slot_info) const
 void HashSlot::restoreFrom(const HashSlotInfo &hash_slot_info)
 {
     num_nodes_ = hash_slot_info.cache_nodes_size();
-    node_list_.clear();                                     // Empty the current HashSlot
+    node_list_.clear();                                     // Empty the list of nodes in the current HashSlot
     for (int i = 0; i < num_nodes_; ++i) {
-        node_list_.push_back(CacheNode(hash_slot_info.cache_nodes(i).name(),
-                                        hash_slot_info.cache_nodes(i).ip(),
+        node_list_.push_back(CacheNode(hash_slot_info.cache_nodes(i).ip(),
                                         hash_slot_info.cache_nodes(i).port()));
         const std::string &str = hash_slot_info.cache_nodes(i).slots();
         for (int j = 0; j < HASHSLOT_SIZE/8; ++j) {
