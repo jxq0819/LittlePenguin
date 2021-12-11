@@ -202,8 +202,13 @@ int main(int argc, char* argv[]) {
             strcpy(cache_ip, hashslot.getCacheAddr(param_1).first.c_str());  // 从hashslot中查询cache地址
             cache_port = hashslot.getCacheAddr(param_1).second;
             cout << "will SendCommandData" << endl;
-            if (SendCommandData(my_cmc_data, cache_ip, cache_port) == false)  // 发送命令数据包给cache
+            CMCData result_data;    // 访问的结果数据包
+            if (SendCommandData(my_cmc_data, cache_ip, cache_port, result_data) == false)  // 发送命令数据包给cache
                 cout << "sendCommandData fail." << endl;
+            
+            // 上面结果数据包result_data收到相关信息后，这里是需要以用户的视角把结果打印到屏幕的
+            // 解析数据（主要是查看有没有想要查询的结果），并打印结果
+            /* ------------- TODO ------------ */
         }
     }
     close(socketfd_to_master);  // 关闭客户端套接字，客户端退出

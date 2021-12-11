@@ -22,18 +22,18 @@ CMCData MakeCommandData(const ::CommandInfo_CmdType cmd_type, const string& para
     return cmc_data;
 }
 
-/*----------------------------------- 发送命令数据 -----------------------------------*/
-bool SendCommandData(const CMCData& cmc_data, const char* dst_ip, u_int16_t dst_port) {
+/*------ 发送命令数据包send_data，并等待对端回复，传出收到的数据包recv_data ------*/
+bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst_port, CMCData& recv_data) {
     char send_buff[BUFSIZ];
     bzero(send_buff, BUFSIZ);
 
     // 打印待发送的CMCData信息
-    string debug_str = cmc_data.DebugString();
+    string debug_str = send_data.DebugString();
     cout << debug_str << endl;
 
-    int data_size = cmc_data.ByteSizeLong();
+    int data_size = send_data.ByteSizeLong();
     cout << "data_size: " << data_size << endl;
-    cmc_data.SerializeToArray(send_buff, data_size);
+    send_data.SerializeToArray(send_buff, data_size);
     cout << "after SerializeToArray: " << strlen(send_buff) << endl;
 
     if (dst_ip == "" || dst_port == 0) {
@@ -60,7 +60,7 @@ bool SendCommandData(const CMCData& cmc_data, const char* dst_ip, u_int16_t dst_
         return false;
     }
 
-    // 阻塞连接master
+    // 阻塞连接cache
     if (connect(sockfd_to_cache, (struct sockaddr*)&cache_addr, sizeof(sockaddr_in)) < 0) {
         perror("connect() error\n");
         close(sockfd_to_cache);
@@ -78,23 +78,18 @@ bool SendCommandData(const CMCData& cmc_data, const char* dst_ip, u_int16_t dst_
 
     // 读取对端的回复消息
 
-    char recv_buf_max[MAX_BUF_SIZE];
+    char recv_buf_max[BUFSIZ];
     memset(recv_buf_max, 0, sizeof(recv_buf_max));
-    int recv_size = recv(sockfd_to_cache, recv_buf_max, MAX_BUF_SIZE, 0);
+    int recv_size = recv(sockfd_to_cache, recv_buf_max, BUFSIZ, 0);
     std::cout << "received: " << recv_size << " Bytes" << std::endl;
 
     if (recv_size <= 0) {
         throw std::runtime_error("recv() error \n");
     } else {
-        // 解析回复数据包
-        CMCData recv_cmc_data;
-        recv_cmc_data.ParseFromArray(recv_buf_max, sizeof(recv_buf_max));
+        // 传出回复数据包，写入信息
+        recv_data.ParseFromArray(recv_buf_max, sizeof(recv_buf_max));
 
-        // 此处先把数据包信息打印出来
-        string recv_cmc_data_str = recv_cmc_data.DebugString();
-        cout << recv_cmc_data_str << endl;
-        cout << "DebugString() end!" << endl;
-
+        // 关闭此次查询TCP连接服务
         close(sockfd_to_cache);  //当完成一次cache访问，就关闭与cache连接的套接字
         cout << "close(sockfd_to_cache);" << endl;
         cout << "--------------------------------------------------------" << endl;
