@@ -70,6 +70,18 @@ void CacheServer::existConnection(int event_i) {
                 string debug_str = recv_cmc_data.DebugString();
                 cout << debug_str << endl;
                 cout << "DebugString() end!" << endl;
+                
+                // 判断是否为下线确认数据包，如果是下线包，并且曾经的确申请过下线，则进程结束
+                if (recv_cmc_data.data_type() == CMCData::ACKINFO) {
+                    if (recv_cmc_data.ack_info().ack_type() == AckInfo::OFFLINEACK) {
+                        if (recv_cmc_data.ack_info().ack_status() == AckInfo::OK) {
+                            if (offline_applied == true) {
+                                cout << "cache offline successful!" << endl;
+                                exit(1);
+                            }
+                        }
+                    }
+                }
 
                 // 解析数据包，并生成回复数据包
                 CMCData resp_data;                                     // 先定义一个回复数据包，作为parseData传入传出参数
@@ -161,22 +173,41 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
         // cout << "heartbeart thread connect master server success!" << endl;
 
         char heart_send_buff[BUFSIZ];
+        int data_size;
         HeartInfo heart_info;
         // 定时发送心跳给master
         bool print_success_msg = true;  // 第一次心跳发送成功时打印成功的消息，后续不打印
         while (1) {
-            /*-------------制作心跳包并序列化-------------*/
-            heart_info.set_cur_time(time(NULL));
-            heart_info.set_cache_status(this->m_cache_status ? HeartInfo::OK : HeartInfo::FAIL);
-            CMCData heart_cmc_data;
-            heart_cmc_data.set_data_type(CMCData::HEARTINFO);
-            auto ht_info_ptr = heart_cmc_data.mutable_ht_info();
-            ht_info_ptr->CopyFrom(heart_info);
+            // 检查offline_apply_flag这个下线标志全局变量是否为true
+            //如果管理员正在申请下线，则此次发送下线数据包，不发送心跳数据包
+            if (offline_applying) {
+                cout << "offline_apply_flag: true" << endl;
+                /*-------------制作下线数据包并序列化-------------*/
+                CommandInfo offline_cmd_info;
+                offline_cmd_info.set_cmd_type(CommandInfo::OFFLINE);
 
-            int data_size = heart_cmc_data.ByteSizeLong();
-            heart_cmc_data.SerializeToArray(heart_send_buff, data_size);
+                CMCData offline_data;
+                offline_data.set_data_type(CMCData::COMMANDINFO);
+                auto cmd_info_ptr = offline_data.mutable_cmd_info();
+                cmd_info_ptr->CopyFrom(offline_cmd_info);
 
-            /*-------------向master端发送心跳数据-------------*/
+                data_size = offline_data.ByteSizeLong();
+                offline_data.SerializeToArray(heart_send_buff, data_size);
+                offline_applying = false;   // 下线申请标志复位
+            } else {
+                /*-------------制作心跳包并序列化-------------*/
+                heart_info.set_cur_time(time(NULL));
+                heart_info.set_cache_status(this->m_cache_status ? HeartInfo::OK : HeartInfo::FAIL);
+                CMCData heart_cmc_data;
+                heart_cmc_data.set_data_type(CMCData::HEARTINFO);
+                auto ht_info_ptr = heart_cmc_data.mutable_ht_info();
+                ht_info_ptr->CopyFrom(heart_info);
+
+                data_size = heart_cmc_data.ByteSizeLong();
+                heart_cmc_data.SerializeToArray(heart_send_buff, data_size);
+            }
+
+            /*-------------向master端发送心跳/下线数据-------------*/
             int send_size = send(heart_sock, heart_send_buff, data_size, 0);
             // cout << "heart_send_size: " << send_size << endl;
             if (send_size > 0 && print_success_msg) {
@@ -287,7 +318,6 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                         }
                     }
                 }
-
                 // 定义一个确认包
                 AckInfo ack_info;
                 ack_info.set_ack_type(AckInfo::SETACK);  // 设置确认包类型

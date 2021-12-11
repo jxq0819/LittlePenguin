@@ -4,13 +4,24 @@
 #include <iostream>
 
 #include "CacheServer.h"
+#include "global_extern.h"
 #include "unistd.h"
 
 // 全局变量
 static struct sockaddr_in master_addr;  // master地址信息，全局静态变量
+extern bool offline_applying;         // cache下线申请触发标志变量，声明为来自的外部全局变量
+extern bool offline_applied;          // 管理员是否申请过下线
 
 // 下线申请信号(SIGQUIT)回调函数声明，向master发送OFFLINE数据包
-void offlineApply(int signal_num);
+void offlineApply(int signal_num) {
+    if (signal_num == SIGQUIT) {
+        //cout << "signal_num == SIGQUIT" << endl;
+
+        // 修改offline_apply_flag下线申请标志全局变量为true
+        offline_applying = true;
+        offline_applied = true;     // 置为true说明曾经确实申请过下线，后续此变量状态不会变动
+    }
+}
 
 int main(int argc, char* argv[]) {
     if (argc <= 3) {
@@ -18,7 +29,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // 
     CacheServer myServer;
 
     /* ---------------------注册master主机地址信息--------------------- */
@@ -64,48 +74,4 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
-}
-
-// 下线申请信号(SIGQUIT)回调函数实现
-void offlineApply(int signal_num) {
-    if (signal_num == SIGQUIT) {
-        cout << "signal_num == SIGQUIT" << endl;
-        /* ---------------------与master建立临时连接用于发送下线申请--------------------- */
-        // 创建与master相连的下线专用套接字文件描述符
-        int offline_sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (offline_sock < 0) {
-            perror("offline socket() error\n");
-            return;
-        }
-        // 阻塞连接master
-        if (connect(offline_sock, (struct sockaddr*)&master_addr, sizeof(sockaddr_in)) < 0) {
-            perror("offline connect() error\n");
-            close(offline_sock);
-            return;
-        }
-
-        cout << "offline connection to master successful!" << endl;
-
-        // 制作下线申请包并序列化
-        CommandInfo offline_cmd_info;
-        offline_cmd_info.set_cmd_type(CommandInfo::OFFLINE);
-        CMCData offline_cmc_data;
-        offline_cmc_data.set_data_type(CMCData::COMMANDINFO);
-        auto cmd_info_ptr = offline_cmc_data.mutable_cmd_info();
-        cmd_info_ptr->CopyFrom(offline_cmd_info);
-
-        int data_size = offline_cmc_data.ByteSizeLong();
-        char offline_send_buff[BUFSIZ];
-        offline_cmc_data.SerializeToArray(offline_send_buff, data_size);
-
-        // 向master端发送下线申请包
-        int send_size = send(offline_sock, offline_send_buff, data_size, 0);
-
-        if (send_size > 0)
-            cout << "Heartbeat thread started successfully!" << send_size << endl;
-        else if (send_size < 0) {
-            std::cout << "Offline apply sending failed!" << std::endl;
-            return;
-        }
-    }
 }
