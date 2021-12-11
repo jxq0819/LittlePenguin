@@ -21,7 +21,6 @@ struct DListNode {
 // 
 class LRUCache {
 private:
-	std::unordered_map<std::string, DListNode*> m_map;		// 用哈希表存储缓存数据
 	DListNode* head;
 	DListNode* tail;
 	int size;
@@ -36,6 +35,7 @@ public:
 	std::string get(const std::string& key);
 	bool set(const std::string& key, const std::string& value);
 	bool deleteKey(std::string& key);
+	std::unordered_map<std::string, DListNode*> m_map;		// 用哈希表存储缓存数据
 };
 
 

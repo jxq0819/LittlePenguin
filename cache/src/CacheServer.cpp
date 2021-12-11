@@ -70,7 +70,7 @@ void CacheServer::existConnection(int event_i) {
                 string debug_str = recv_cmc_data.DebugString();
                 cout << debug_str << endl;
                 cout << "DebugString() end!" << endl;
-                
+
                 // 判断是否为下线确认数据包，如果是下线包，并且曾经的确申请过下线，则进程结束
                 if (recv_cmc_data.data_type() == CMCData::ACKINFO) {
                     if (recv_cmc_data.ack_info().ack_type() == AckInfo::OFFLINEACK) {
@@ -193,7 +193,7 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
 
                 data_size = offline_data.ByteSizeLong();
                 offline_data.SerializeToArray(heart_send_buff, data_size);
-                offline_applying = false;   // 下线申请标志复位
+                offline_applying = false;  // 下线申请标志复位
             } else {
                 /*-------------制作心跳包并序列化-------------*/
                 heart_info.set_cur_time(time(NULL));
@@ -457,6 +457,48 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
     // 查到后就对比cache_ip_new/cache_port_new是否仍为本机的地址，假如是本机，就跳过这个k-v，考察下一个
     // 假如发现当前的k-v不是本机负责，则模仿client发送SET命令（你可以看一下client的发送命令的代码）给另外一台主机
     // 并把本机的该k-v从LRU链表中删除
+
+    // 遍历本cacheLRU中的所有key，根据hashslot_new查询本地key是否还属于本机管理，如果是，则跳过，否则set到新cache地址。
+    if (!m_cache.m_map.empty()) {
+        // 这里我找不到本地ip和port存放在哪，先用哈希表中第一个key对应地址这个代替
+        char cache_ip_self[16];
+        strcpy(cache_ip_self, m_hashslot.getCacheAddr(m_cache.m_map.begin()->first).first.c_str());
+        int cache_port_self = m_hashslot.getCacheAddr(m_cache.m_map.begin()->first).second;
+        char cache_ip_new[16];
+        int cache_port_new;
+        for (auto kv_self : m_cache.m_map) {
+            string key_self = kv_self.first;
+            strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key_self).first.c_str());
+            cache_port_new = m_hashslot_new.getCacheAddr(key_self).second;
+            if (strcmp(cache_ip_new, cache_ip_self) != 0 && cache_port_new != cache_port_self) {
+                // 新hashsort中key不在本机，连接cache_ip_new对应的cache，再向新cache地址发送SET命令
+                CMCData migrating_data;
+                migrating_data = MakeCommandData(CommandInfo::SET, key_self, m_cache.get(key_self));
+                cout << "will SendCommandData for migrating" << endl;
+                CMCData result_data;                                                                      // 访问的结果数据包
+                if (SendCommandData(migrating_data, cache_ip_new, cache_port_new, result_data) == false)  // 发送命令数据包给cache
+                    cout << "sendCommandData for migrating fail." << endl;
+                // 检查另外一台主机回复的result_data中是否为SETACK & OK，没问题就删除本地的这个kv
+
+                bool del_ret;  // del成功与否的标志
+                if (result_data.data_type() == CMCData::ACKINFO) {
+                    if (result_data.ack_info().ack_type() == AckInfo::SETACK) {
+                        if (result_data.ack_info().ack_status() == AckInfo::OK) {
+                            std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.deleteKey操作上锁
+                            del_ret = m_cache.deleteKey(key_self);                    // 删除k-v键值对
+                        }
+                    }
+                }
+                if (del_ret == false) {
+                    cout << "delete local k-v fail." << endl;
+                    return false;
+                }
+            }
+        }
+    }
+
+    cout << "Local cache data migration completed." << endl;
+
     // ----------------> code in here <-------------------- //
 
     this->m_is_migrating = false;

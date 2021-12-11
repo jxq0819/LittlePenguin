@@ -15,7 +15,7 @@ extern bool offline_applied;          // 管理员是否申请过下线
 // 下线申请信号(SIGQUIT)回调函数声明，向master发送OFFLINE数据包
 void offlineApply(int signal_num) {
     if (signal_num == SIGQUIT) {
-        //cout << "signal_num == SIGQUIT" << endl;
+        cout << "signal_num == SIGQUIT" << endl;
 
         // 修改offline_apply_flag下线申请标志全局变量为true
         offline_applying = true;
