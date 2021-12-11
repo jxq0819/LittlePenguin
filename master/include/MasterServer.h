@@ -49,6 +49,11 @@ private:
     std::unordered_set<Addr, addrHasher> client_links_;      // set of all clients' AddrPair
     std::unordered_map<Addr, HeartbeatInfo, addrHasher> cache_links_; // cache server Addrs mapped to their heartbeat info
     std::unordered_map<Addr, time_t, addrHasher> blacklist_; // blacklist, cache server Addr mapped to time_t，短时间内Master不会响应来自这些地址/端口的心跳包
+    std::mutex hash_slot_mutex_;
+    std::mutex links_mutex_;
+    std::mutex client_links_mutex_;
+    std::mutex cache_links_mutex_;
+    std::mutex blacklist_mutex_;
     TaskQueue<std::pair<Op, Addr>> task_queue_;              // tasks to add/remove a cache server to/from [cache_links_]
     // callable objects to run in other threads
     static void startHeartbeartService(MasterServer*);
