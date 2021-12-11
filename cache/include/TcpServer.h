@@ -41,6 +41,4 @@ class TcpServer {
     epoll_event m_epollEvents[MAX_EVENTS];  // epoll事件队列
     int m_epfd;                             // epoll的fd
     int m_listen_sockfd;
-
-    std::mutex m_mutex;
 };
