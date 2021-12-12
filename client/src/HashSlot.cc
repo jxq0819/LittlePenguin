@@ -115,6 +115,7 @@ void HashSlot::remCacheNode(const CacheNode &node)
 
 void HashSlot::saveTo(HashSlotInfo &hash_slot_info) const
 {
+    hash_slot_info.set_hashinfo_type(HashSlotInfo::ALLCACHEINFO);
     for (auto &node : node_list_) {
         auto node_info = hash_slot_info.add_cache_nodes();
         // node_info->set_name(node.name());

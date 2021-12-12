@@ -113,6 +113,8 @@ void MasterServer::existConnection(int event_i) {
                 HashSlotInfo send_hs_info;
                 HeartbeatInfo recv_ht_info;
                 int send_size;
+                bool inBlacklist = false;
+                time_t t;
                 switch (recv_cmc_data.data_type()) {
                     case CMCData::COMMANDINFO:
                         std::cout << "Command received" << std::endl;
@@ -156,8 +158,9 @@ void MasterServer::existConnection(int event_i) {
                                 if (cache_links_.find({std::string(p_addr), ntohs(addr.sin_port)}) == cache_links_.end()) {
                                     std::cout << "OFFLINE request from a unrecorded cache server!" << std::endl;
                                 } else {
-                                    time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                                    t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                                     cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}].time = t;          // 收到OFFLINE包时也更新对应节点的心跳时间戳
+                                    cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}].status = 0;        // 收到OFFLINE包时也更新对应节点的心跳时间戳
                                     task_queue_.Push({TASK_SHUT, {std::string(p_addr), ntohs(addr.sin_port)}});  // 缩容，add a task to deal with the leaving cache server
                                 }
 }
@@ -169,15 +172,25 @@ void MasterServer::existConnection(int event_i) {
                         std::cout << "Heartbeat from " << p_addr << ":" << ntohs(addr.sin_port) << std::endl;
                         recv_ht_info.time = recv_cmc_data.ht_info().cur_time();
                         recv_ht_info.status = recv_cmc_data.ht_info().cache_status();
-// acquire lock
-{                       std::lock_guard<std::mutex> lock(cache_links_mutex_);
-                        if (cache_links_.count({std::string(p_addr), ntohs(addr.sin_port)})) {
-                            cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}] = recv_ht_info;        // update Heartbeat Info
+                        t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                        if (t - recv_ht_info.time > DELAY_TIMEOUT) {
+                            std::cout << "Heartbeat rejected. Please check your system time or network status." << std::endl;   // 丢弃到达时刻与发送时刻超过一定时间间隔的心跳包
                         } else {
-                            cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}] = recv_ht_info;        // Heartbeat from a new cache server
-                            task_queue_.Push({TASK_ADD, {std::string(p_addr), ntohs(addr.sin_port)}});       // 扩容，add a task to deal with the new cache server
-                        }
+// acquire lock
+{                           std::lock_guard<std::mutex> lock(blacklist_mutex_);
+                            // check if the heartbeat is from a cache server in the blacklist
+                            inBlacklist = blacklist_.count({std::string(p_addr), ntohs(addr.sin_port)});
 }
+                            if (!inBlacklist) {
+                                std::lock_guard<std::mutex> lock(cache_links_mutex_);
+                                if (cache_links_.count({std::string(p_addr), ntohs(addr.sin_port)})) {
+                                    cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}] = recv_ht_info;        // update Heartbeat Info
+                                } else {
+                                    cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}] = recv_ht_info;        // Heartbeat from a new cache server
+                                    task_queue_.Push({TASK_ADD, {std::string(p_addr), ntohs(addr.sin_port)}});       // 扩容，add a task to deal with the new cache server
+                                }
+                            }
+                        }
                         break;
                     // Other cases
                     default:;
@@ -196,6 +209,7 @@ int MasterServer::setnonblocking(int fd) {
     int new_option = old_option | O_NONBLOCK;
     fcntl(fd, F_SETFL, new_option);
     return old_option;
+
 }
 
 void MasterServer::startHeartbeartService(MasterServer *m)
@@ -210,7 +224,7 @@ void MasterServer::startHeartbeartService(MasterServer *m)
 {       std::lock_guard<std::mutex> lock(m->cache_links_mutex_);
         for (auto it = m->cache_links_.begin(); it != m->cache_links_.end(); ++it) {
             std::cout << "Current time is " << t << ", cache " << it->first.first << ":" << it->first.second << " last seen at " << it->second.time << std::endl;
-            if (t - it->second.time > 1) {    // Heartbeat lost
+            if (t - it->second.time > HEARTBEAT_TIMEOUT) {    // Heartbeat lost
                 std::cout << "Lost cache server " << it->first.first << ":" << it->first.second << "\n";
                 m->task_queue_.Push({TASK_LOST, it->first});    // add a task to deal with the lost cache server
                 m->cache_links_.erase(it);                      // remove the lost cache server from cache_links_
@@ -223,7 +237,7 @@ void MasterServer::startHeartbeartService(MasterServer *m)
 // acquire lock
 {       std::lock_guard<std::mutex> lock(m->blacklist_mutex_);
         for (auto it = m->blacklist_.begin(); it != m->blacklist_.end(); ++it) {
-            if (t - it->second > TIMEOUT) {
+            if (t - it->second > BLACKLIST_TIMEOUT) {
                 std::cout << it->first.first << ":" << it->first.second << " removed from the blacklist\n" << std::endl;
                 m->blacklist_.erase(it);
             }
@@ -674,6 +688,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << "HASHSLOTUPDATEACK from cache server receive error!" << std::endl;
             }
             // send OFFLINEACK
+            std::cout << "Sending OFFLINEACK..." << std::endl;
             bzero(send_buff, BUFF_SIZE);
             AckInfo ack_info;
             ack_info.set_ack_type(AckInfo::OFFLINEACK);
@@ -682,10 +697,12 @@ void MasterServer::startHashslotService(MasterServer *m)
             cmc_data.set_data_type(CMCData::ACKINFO);
             cmc_data.mutable_ack_info()->CopyFrom(ack_info);
             cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
+            std::cout << cmc_data.DebugString() << std::endl;
             send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
             if (send_size < 0) {
                 std::cout << "Send OFFLINEACK failed!" << std::endl;
             }
+            std::cout << "Send size = " << send_size << std::endl;
             // add the permitted-to-leave node to the blacklist
             time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 // acquire lock
