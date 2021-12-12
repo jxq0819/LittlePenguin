@@ -36,7 +36,7 @@ class CacheServer : public TcpServer {
     // 解析CMC数据包
     bool parseData(const CMCData& recv_data, CMCData& response_data);
     // 开始心跳线程
-    bool beginHeartbeatThread(const struct sockaddr_in& master_addr);
+    bool beginHeartbeatThread(const struct sockaddr_in& master_addr, sockaddr_in& cache_addr);
     // inline void setCacheStatus(bool&& s) {m_cache_status = s;};
     // inline bool getCacheSatus() {return m_cache_status;};
 

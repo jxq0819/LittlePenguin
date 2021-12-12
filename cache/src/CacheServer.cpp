@@ -154,8 +154,8 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
 }
 
 // 心跳线程函数
-bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
-    auto enqueue_ret = threadPool->enqueue([this, &master_addr]() {
+bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr, sockaddr_in& cache_addr) {
+    auto enqueue_ret = threadPool->enqueue([this, &master_addr, &cache_addr]() {
         /* ---------------------与master建立持久心跳连接--------------------- */
         // 创建与master相连的心跳专用套接字文件描述符
         int heart_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -163,13 +163,16 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr) {
             perror("socket() error\n");
             return false;
         }
+        int opt = 1;
+        setsockopt(heart_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
         // 阻塞连接master
         if (connect(heart_sock, (struct sockaddr*)&master_addr, sizeof(sockaddr_in)) < 0) {
             perror("connect() error\n");
             close(heart_sock);
             return false;
         }
-
+        socklen_t len = sizeof(cache_addr);
+        getsockname(heart_sock, (sockaddr*)&cache_addr, &len);
         // cout << "heartbeart thread connect master server success!" << endl;
 
         char heart_send_buff[BUFSIZ];

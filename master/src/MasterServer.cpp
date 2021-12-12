@@ -44,8 +44,8 @@ void MasterServer::newConnection() {
     // record the Addr {ip,port} 
     char p_addr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(new_addr.sin_addr.s_addr), p_addr, sizeof(p_addr));    // convert IP address from numeric to presentation
-    links_.insert({std::string(p_addr), new_addr.sin_port});                    // add the Addr of the new connection to [links_]
-    std::cout << p_addr << ":" << new_addr.sin_port << " has connected" << std::endl;
+    links_.insert({std::string(p_addr), ntohs(new_addr.sin_port)});                    // add the Addr of the new connection to [links_]
+    std::cout << p_addr << ":" << ntohs(new_addr.sin_port) << " has connected" << std::endl;
 
     // 注册与这个客户端有关的事件
     epoll_event ev;
@@ -70,20 +70,19 @@ void MasterServer::existConnection(int event_i) {
             sockaddr_in left_addr;
             socklen_t len = sizeof(left_addr);
             bzero(&left_addr, len);
-            auto i = this->m_epollEvents[event_i].data.fd;
             getpeername(this->m_epollEvents[event_i].data.fd, (sockaddr*) &left_addr, &len);
             // record the Addr {ip:port} 
             char p_addr[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &(left_addr.sin_addr.s_addr), p_addr, sizeof(p_addr)); // convert the IP address from numeric to presentation
 // acquire lock
 {           std::lock_guard<std::mutex> lock(links_mutex_);
-            links_.erase({std::string(p_addr), left_addr.sin_port});
+            links_.erase({std::string(p_addr), ntohs(left_addr.sin_port)});
 }
 // acquire lock
 {           std::lock_guard<std::mutex> lock(client_links_mutex_);
-            client_links_.erase({std::string(p_addr), left_addr.sin_port});                // remove if exist, otherwise do nothing
+            client_links_.erase({std::string(p_addr), ntohs(left_addr.sin_port)});                // remove if exist, otherwise do nothing
 }
-            std::cout << p_addr << ":" << left_addr.sin_port << " left" << std::endl;
+            std::cout << p_addr << ":" << ntohs(left_addr.sin_port) << " left" << std::endl;
             // 将其从epoll树上摘除
             if (epoll_ctl(m_epfd, EPOLL_CTL_DEL, m_epollEvents[event_i].data.fd, NULL) < 0) {
                 throw std::runtime_error("delete client error\n");
@@ -122,7 +121,7 @@ void MasterServer::existConnection(int event_i) {
                                 std::cout << "Command GETSLOT received" << std::endl;
 // acquire lock
 {                               std::lock_guard<std::mutex> lock(client_links_mutex_);
-                                client_links_.insert({std::string(p_addr),addr.sin_port});  // add the current Addr to [client_link_]
+                                client_links_.insert({std::string(p_addr),ntohs(addr.sin_port)});  // add the current Addr to [client_link_]
 }
                                 // 返回Client完整的HashSlotInfo
                                 char send_buff[102400];
@@ -154,12 +153,12 @@ void MasterServer::existConnection(int event_i) {
                                 std::cout << "OFFLINE request received" << std::endl;
 // acquire lock
 {                               std::lock_guard<std::mutex> lock(cache_links_mutex_);
-                                if (cache_links_.find({std::string(p_addr), addr.sin_port}) == cache_links_.end()) {
+                                if (cache_links_.find({std::string(p_addr), ntohs(addr.sin_port)}) == cache_links_.end()) {
                                     std::cout << "OFFLINE request from a unrecorded cache server!" << std::endl;
                                 } else {
                                     time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-                                    cache_links_[{std::string(p_addr), addr.sin_port}].time = t;         // 收到OFFLINE包时也更新对应节点的心跳时间戳
-                                    task_queue_.Push({TASK_SHUT, {std::string(p_addr),addr.sin_port}});  // 缩容，add a task to deal with the leaving cache server
+                                    cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}].time = t;          // 收到OFFLINE包时也更新对应节点的心跳时间戳
+                                    task_queue_.Push({TASK_SHUT, {std::string(p_addr), ntohs(addr.sin_port)}});  // 缩容，add a task to deal with the leaving cache server
                                 }
 }
                                 break;
@@ -167,16 +166,16 @@ void MasterServer::existConnection(int event_i) {
                         }
                     break;
                     case CMCData::HEARTINFO:
-                        std::cout << "Heartbeat from " << p_addr << ":" << addr.sin_port << std::endl;
+                        std::cout << "Heartbeat from " << p_addr << ":" << ntohs(addr.sin_port) << std::endl;
                         recv_ht_info.time = recv_cmc_data.ht_info().cur_time();
                         recv_ht_info.status = recv_cmc_data.ht_info().cache_status();
 // acquire lock
 {                       std::lock_guard<std::mutex> lock(cache_links_mutex_);
-                        if (cache_links_.count({std::string(p_addr),addr.sin_port})) {
-                            cache_links_[{std::string(p_addr),addr.sin_port}] = recv_ht_info;        // update Heartbeat Info
+                        if (cache_links_.count({std::string(p_addr), ntohs(addr.sin_port)})) {
+                            cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}] = recv_ht_info;        // update Heartbeat Info
                         } else {
-                            cache_links_[{std::string(p_addr),addr.sin_port}] = recv_ht_info;        // Heartbeat from a new cache server
-                            task_queue_.Push({TASK_ADD, {std::string(p_addr),addr.sin_port}});       // 扩容，add a task to deal with the new cache server
+                            cache_links_[{std::string(p_addr), ntohs(addr.sin_port)}] = recv_ht_info;        // Heartbeat from a new cache server
+                            task_queue_.Push({TASK_ADD, {std::string(p_addr), ntohs(addr.sin_port)}});       // 扩容，add a task to deal with the new cache server
                         }
 }
                         break;
@@ -333,12 +332,12 @@ void MasterServer::startHashslotService(MasterServer *m)
             if (sockfd < 0) {
                 perror("socket() error\n");
             }
-            // 暂用阻塞连接新节点，默认75s等待；当多个cache server同时变化的情况下会出问题。需改用select?合理设置超时时间（略大于心跳间隔+RTT） 
+            // 暂用阻塞连接新节点，默认75s等待；当多个cache server同时变化的情况下会出问题。需合理设置超时时间（略大于心跳间隔+RTT） 
             if (connect(sockfd, (struct sockaddr*)&cache_addr, sizeof(sockaddr_in)) < 0) {
                 perror("connect() error\n");
                 close(sockfd);
             }
-            // construct and send the hashslot change info
+            // construct and send the complete hashslot
             CMCData cmc_data;
             cmc_data.set_data_type(CMCData::HASHSLOTINFO);
             HashSlotInfo hs_info;
@@ -351,7 +350,7 @@ void MasterServer::startHashslotService(MasterServer *m)
             int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
             std::cout << "send_size: " << send_size << std::endl;
             if (send_size < 0) {
-                std::cout << "Send hashslot change failed!" << std::endl;
+                std::cout << "Send the complete hashslot failed!" << std::endl;
             }
             // wait for HASHSLOTUPDATEACK
             if (checkAckInfo(sockfd, AckInfo::HASHSLOTUPDATEACK)) {
@@ -405,9 +404,9 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cmc_data.set_data_type(CMCData::HASHSLOTINFO);
                 auto hs_info_ptr = cmc_data.mutable_hs_info();
                 hs_info_ptr->set_hashinfo_type(HashSlotInfo::ADDCACHE);
-                auto client_info = hs_info_ptr->mutable_cache_node();
-                client_info->set_ip(addr.first);
-                client_info->set_port(addr.second);
+                auto cache_info = hs_info_ptr->mutable_cache_node();
+                cache_info->set_ip(addr.first);
+                cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFSIZ);
@@ -535,9 +534,9 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cmc_data.set_data_type(CMCData::HASHSLOTINFO);
                 auto hs_info_ptr = cmc_data.mutable_hs_info();
                 hs_info_ptr->set_hashinfo_type(HashSlotInfo::REMCACHE);
-                auto client_info = hs_info_ptr->mutable_cache_node();
-                client_info->set_ip(addr.first);
-                client_info->set_port(addr.second);
+                auto cache_info = hs_info_ptr->mutable_cache_node();
+                cache_info->set_ip(addr.first);
+                cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFSIZ);
@@ -744,9 +743,9 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cmc_data.set_data_type(CMCData::HASHSLOTINFO);
                 auto hs_info_ptr = cmc_data.mutable_hs_info();
                 hs_info_ptr->set_hashinfo_type(HashSlotInfo::REMCACHE);
-                auto client_info = hs_info_ptr->mutable_cache_node();
-                client_info->set_ip(addr.first);
-                client_info->set_port(addr.second);
+                auto cache_info = hs_info_ptr->mutable_cache_node();
+                cache_info->set_ip(addr.first);
+                cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFSIZ);

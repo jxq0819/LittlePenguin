@@ -9,7 +9,7 @@
 class CacheNode {
     friend class HashSlot;
 public:
-    CacheNode(std::string ip, int p): ip_(ip), port_(p) { name_ = ip_ + std::to_string(port_); }    // Usage: CacheNode("127.0.0.1", 5005);
+    CacheNode(std::string ip, int p): ip_(ip), port_(p) { name_ = ip_ + "." + std::to_string(port_); }    // Usage: CacheNode("127.0.0.1", 5005);
     std::string name() const { return name_; }          // returns the name of the cache node
     std::string ip() const { return ip_; }              // returns the ip of the cache node
     int port() const { return port_; }                  // returns the port of the cache node

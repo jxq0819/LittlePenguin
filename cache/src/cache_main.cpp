@@ -24,16 +24,16 @@ void offlineApply(int signal_num) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc <= 3) {
-        printf("usage: %s cache_port master_ip master_port\n", argv[0]);
+    if (argc <= 2) {
+        printf("usage: %s master_ip master_port\n", argv[0]);
         return -1;
     }
 
     CacheServer myServer;
 
     /* ---------------------注册master主机地址信息--------------------- */
-    const char* master_ip = argv[2];              // master主机ip
-    const u_int16_t master_port = atoi(argv[3]);  // master主机port
+    const char* master_ip = argv[1];              // master主机ip
+    const u_int16_t master_port = atoi(argv[2]);  // master主机port
     if (master_port <= MIN_PORT || master_port >= MAX_PORT) {
         std::cout << "port error\n";
         return -1;
@@ -45,9 +45,10 @@ int main(int argc, char* argv[]) {
         perror("inet_pton() error\n");
         return -1;
     }
-
     /* ---------------------与master建立持久连接发送心跳--------------------- */
-    myServer.beginHeartbeatThread(master_addr);  // 启动心跳线程
+    sockaddr_in cache_addr;
+    bzero(&cache_addr, sizeof(cache_addr));
+    myServer.beginHeartbeatThread(master_addr, cache_addr);  // 启动心跳线程
 
     /* ----------注册SIGQUIT信号，管理员按（Ctrl + \）发送一个SIGQUIT信号，并向master申请下线----------- */
     struct sigaction offline_act;
@@ -58,7 +59,11 @@ int main(int argc, char* argv[]) {
 
     /* ---------------------绑定自身主机信息和设置监听上限--------------------- */
     std::cout << "-------------------------------------------" << std::endl;
-    int myport = atoi(argv[1]);  // cache自己的端口号
+    // int myport = atoi(argv[1]);  // cache自己的端口号
+    int myport;                     // cache自己的端口号
+    while (!ntohs(cache_addr.sin_port)) { /* empty body */ }    // wait for the connection to the master to be established
+    myport = ntohs(cache_addr.sin_port);
+    std::cout << "myport = " << myport << std::endl;
     std::cout << "Cache program started..." << std::endl;
     if (!myServer.bindAndListen(myport)) {
         std::cout << "listen error !";
