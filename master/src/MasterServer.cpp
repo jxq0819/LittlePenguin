@@ -89,9 +89,9 @@ void MasterServer::existConnection(int event_i) {
             }
         } else if (this->m_epollEvents[event_i].events & EPOLLIN) {
             // 如果与客户端连接的该套接字的输入缓存中有收到数据
-            char buf[MAX_BUFFER];
-            memset(buf, 0, MAX_BUFFER);
-            int recv_size = recv(m_epollEvents[event_i].data.fd, buf, MAX_BUFFER, 0);
+            char buf[BUFF_SIZE];
+            bzero(buf, sizeof(buf));
+            int recv_size = recv(m_epollEvents[event_i].data.fd, buf, BUFF_SIZE, 0);
             // std::cout << "received: " << recv_size << " Byte" << std::endl;
             if (recv_size <= 0) {
                 throw std::runtime_error("recv() error \n");
@@ -124,8 +124,8 @@ void MasterServer::existConnection(int event_i) {
                                 client_links_.insert({std::string(p_addr),ntohs(addr.sin_port)});  // add the current Addr to [client_link_]
 }
                                 // 返回Client完整的HashSlotInfo
-                                char send_buff[102400];
-                                bzero(send_buff, 102400);
+                                char send_buff[BUFF_SIZE_LONG];
+                                bzero(send_buff, BUFF_SIZE_LONG);
                                 send_cmc_data.set_data_type(CMCData::HASHSLOTINFO);
 // acquire lock
 {                               std::lock_guard<std::mutex> lock(hash_slot_mutex_);
@@ -134,7 +134,7 @@ void MasterServer::existConnection(int event_i) {
                                 send_cmc_data.mutable_hs_info()->CopyFrom(send_hs_info);
                                 std::cout << send_cmc_data.DebugString() << std::endl;                   // debug string
                                 std::cout << "Data Size: " << send_cmc_data.ByteSizeLong() << std::endl;
-                                send_cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                                send_cmc_data.SerializeToArray(send_buff, BUFF_SIZE_LONG);
                                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                                 send_size = send(m_epollEvents[event_i].data.fd, send_buff, send_cmc_data.ByteSizeLong(), 0);
                                 std::cout << "send_size: " << send_size << std::endl;
@@ -257,8 +257,8 @@ void MasterServer::startHashslotService(MasterServer *m)
             // sequentially connect each old cache server
             int cur = 0;
             for (auto cache_it = new_hash_slot->cbegin(); cur < new_hash_slot->numNodes() - 1; ++cur, ++cache_it) {
-                char send_buff[BUFSIZ];
-                bzero(send_buff, BUFSIZ);
+                char send_buff[BUFF_SIZE];
+                bzero(send_buff, BUFF_SIZE);
                 // record the cache server address
                 const char* cache_ip = cache_it->ip().c_str();         // cache server's ip
                 const u_int16_t cache_port = cache_it->port();         // cache server's port
@@ -295,7 +295,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-                cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
@@ -310,9 +310,9 @@ void MasterServer::startHashslotService(MasterServer *m)
                 }
                 close(sockfd);
             }
-            // then send to the new cache server the complete hashslot info, BUFSIZ 8192 too small ?
-            char send_buff[102400];
-            bzero(send_buff, 102400);
+            // then send to the new cache server the complete hashslot info
+            char send_buff[BUFF_SIZE_LONG];
+            bzero(send_buff, BUFF_SIZE_LONG);
             // record the cache server address
             const auto &cache_node = new_hash_slot->cback();
             const char* cache_ip = cache_node.ip().c_str();         // cache server's ip
@@ -345,7 +345,7 @@ void MasterServer::startHashslotService(MasterServer *m)
             cmc_data.mutable_hs_info()->CopyFrom(hs_info);
             std::cout << cmc_data.DebugString() << std::endl;                   // debug string
             std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-            cmc_data.SerializeToArray(send_buff, BUFSIZ);
+            cmc_data.SerializeToArray(send_buff, BUFF_SIZE_LONG);
             std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
             int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
             std::cout << "send_size: " << send_size << std::endl;
@@ -372,8 +372,8 @@ void MasterServer::startHashslotService(MasterServer *m)
 }
             // sequentially connect each client and send the hashslot change info
             for (auto &client : client_links) {
-                char send_buff[BUFSIZ];
-                bzero(send_buff, BUFSIZ);
+                char send_buff[BUFF_SIZE];
+                bzero(send_buff, BUFF_SIZE);
                 // record the client address
                 const char* client_ip = client.first.c_str();        // client ip
                 const u_int16_t client_port = client.second;         // client port
@@ -409,7 +409,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-                cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
@@ -441,8 +441,8 @@ void MasterServer::startHashslotService(MasterServer *m)
             // sequentially connect each remaining cache server
             int cur = 0;
             for (auto cache_it = new_hash_slot->cbegin(); cache_it != new_hash_slot->cend(); ++cache_it) {
-                char send_buff[BUFSIZ];
-                bzero(send_buff, BUFSIZ);
+                char send_buff[BUFF_SIZE];
+                bzero(send_buff, BUFF_SIZE);
                 // record the cache server adress
                 const char* cache_ip = cache_it->ip().c_str();         // cache server ip
                 const u_int16_t cache_port = cache_it->port();         // cache server port
@@ -478,7 +478,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-                cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
@@ -502,8 +502,8 @@ void MasterServer::startHashslotService(MasterServer *m)
             auto client_links = m->client_links_;   // needs lock
             // connect each client and send hashslot change info
             for (auto &client : client_links) {
-                char send_buff[BUFSIZ];
-                bzero(send_buff, BUFSIZ);
+                char send_buff[BUFF_SIZE];
+                bzero(send_buff, BUFF_SIZE);
                 // record the client addess
                 const char* client_ip = client.first.c_str();        // client ip
                 const u_int16_t client_port = client.second;         // client port
@@ -539,7 +539,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-                cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
@@ -574,8 +574,8 @@ void MasterServer::startHashslotService(MasterServer *m)
             // sequentially connect each remaining cache server
             int cur = 0;
             for (auto cache_it = new_hash_slot->cbegin(); cache_it != new_hash_slot->cend(); ++cache_it) {
-                char send_buff[BUFSIZ];
-                bzero(send_buff, BUFSIZ);
+                char send_buff[BUFF_SIZE];
+                bzero(send_buff, BUFF_SIZE);
                 // record the cache server adress
                 const char* cache_ip = cache_it->ip().c_str();         // cache server ip
                 const u_int16_t cache_port = cache_it->port();         // cache server port
@@ -611,7 +611,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-                cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
@@ -627,8 +627,8 @@ void MasterServer::startHashslotService(MasterServer *m)
                 close(sockfd);
             }
             // then send to the leaving cache server the hashslot change info
-            char send_buff[BUFSIZ];
-            bzero(send_buff, BUFSIZ);
+            char send_buff[BUFF_SIZE];
+            bzero(send_buff, BUFF_SIZE);
             // record the cache server address
             const char* cache_ip = addr.first.c_str();         // the leaving cache server's ip
             const u_int16_t cache_port = addr.second;          // the leaving cache server's port
@@ -660,7 +660,7 @@ void MasterServer::startHashslotService(MasterServer *m)
             cmc_data.mutable_hs_info()->CopyFrom(hs_info);
             std::cout << cmc_data.DebugString() << std::endl;                   // debug string
             std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-            cmc_data.SerializeToArray(send_buff, BUFSIZ);
+            cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
             std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
             int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
             std::cout << "send_size: " << send_size << std::endl;
@@ -674,14 +674,14 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << "HASHSLOTUPDATEACK from cache server receive error!" << std::endl;
             }
             // send OFFLINEACK
-            bzero(send_buff, BUFSIZ);
+            bzero(send_buff, BUFF_SIZE);
             AckInfo ack_info;
             ack_info.set_ack_type(AckInfo::OFFLINEACK);
             ack_info.set_ack_status(AckInfo::OK);
             cmc_data.Clear();
             cmc_data.set_data_type(CMCData::ACKINFO);
             cmc_data.mutable_ack_info()->CopyFrom(ack_info);
-            cmc_data.SerializeToArray(send_buff, BUFSIZ);
+            cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
             send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
             if (send_size < 0) {
                 std::cout << "Send OFFLINEACK failed!" << std::endl;
@@ -711,8 +711,8 @@ void MasterServer::startHashslotService(MasterServer *m)
 }
             // connect each client and send hashslot change info
             for (auto &client : client_links) {
-                char send_buff[BUFSIZ];
-                bzero(send_buff, BUFSIZ);
+                char send_buff[BUFF_SIZE];
+                bzero(send_buff, BUFF_SIZE);
                 // record the client addess
                 const char* client_ip = client.first.c_str();        // client ip
                 const u_int16_t client_port = client.second;         // client port
@@ -748,7 +748,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 cache_info->set_port(addr.second);
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-                cmc_data.SerializeToArray(send_buff, BUFSIZ);
+                cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
                 std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
@@ -775,9 +775,9 @@ void MasterServer::startHashslotService(MasterServer *m)
 // Utility functions
 bool checkAckInfo(int sockfd, int ackType)
 {
-    char recv_buff[BUFSIZ];
-    bzero(recv_buff, BUFSIZ);
-    int recv_size = recv(sockfd, recv_buff, BUFSIZ, 0);
+    char recv_buff[BUFF_SIZE];
+    bzero(recv_buff, BUFF_SIZE);
+    int recv_size = recv(sockfd, recv_buff, BUFF_SIZE, 0);
     if (recv_size <= 0) {
         std::cout << "ACK receive error!" << std::endl;
     } else {

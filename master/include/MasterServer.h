@@ -16,6 +16,8 @@
 #define TASK_SHUT 2
 
 #define TIMEOUT 5   // 黑名单时间（秒）
+#define BUFF_SIZE       2048        // 2KB
+#define BUFF_SIZE_LONG  1024000     // 1MB
 
 struct HeartbeatInfo {
     int32_t     time;
