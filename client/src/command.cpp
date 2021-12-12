@@ -127,12 +127,18 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
     int recv_size = recv(master_fd, recv_buf_max, MAX_BUF_SIZE, 0);
     std::cout << "received: " << recv_size << " Bytes" << std::endl;
     if (recv_size <= 0) {
-        perror("recv() error\n");
+        perror("getslot(): recv error, recv_size <= 0\n");
         return false;
     } else {
         // 更新本地hashslot
         CMCData slot_cmc_data;
         slot_cmc_data.ParseFromArray(recv_buf_max, sizeof(recv_size));
+
+        // 此处先把数据包信息打印出来
+        string debug_str = slot_cmc_data.DebugString();
+        cout << debug_str << endl;
+        cout << "DebugString() end!" << endl;
+
         // 确认收到的是哈希槽信息包，则进行进一步解包操作
         if (slot_cmc_data.data_type() == CMCData::HASHSLOTINFO) {
             switch (slot_cmc_data.hs_info().hashinfo_type()) {
@@ -154,17 +160,34 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
                 case HashSlotInfo::REMCACHE: {
                     string node_ip = slot_cmc_data.hs_info().cache_node().ip();
                     int node_port = slot_cmc_data.hs_info().cache_node().port();
-                    // 下面这行需要等子晨大哥修改CacheNode.h的remCacheNode参数后再打开！
-                    //slot.remCacheNode(node_ip, node_port);
+                    slot.remCacheNode(CacheNode(node_ip, node_port));
                     break;
                 }
                 default:
                     break;
             }
+
+            // 回复master HASHSLOTUPDATEACK哈希槽更新完毕确认包
+            AckInfo update_ack;
+            update_ack.set_ack_type(AckInfo::HASHSLOTUPDATEACK);
+            update_ack.set_ack_status(AckInfo::OK);
+            CMCData update_ack_data;
+            update_ack_data.set_data_type(CMCData::ACKINFO);
+            auto ack_info_ptr = update_ack_data.mutable_ack_info();
+            ack_info_ptr->CopyFrom(update_ack);
+
+            bzero(send_buff, BUFSIZ);
+            int update_ack_data_size = update_ack_data.ByteSizeLong();
+            update_ack_data.SerializeToArray(send_buff, update_ack_data_size);
+
+            // 发送HASHSLOTUPDATEACK数据包
+            send_size = send(master_fd, send_buff, update_ack_data_size, 0);
+            cout << "client_send_update_ack_size: " << send_size << endl;
+            if (send_size < 0) {
+                perror("send HASHSLOTUPDATEACK failed\n");
+                return false;
+            }
         }
-
-        // 回复master HASHSLOTUPDATEACK哈希槽更新完毕确认包
-
     }
     return true;
 }

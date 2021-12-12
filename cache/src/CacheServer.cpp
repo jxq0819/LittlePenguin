@@ -146,7 +146,6 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
                 return true;
             }
         }
-
         default:
             break;
     }
