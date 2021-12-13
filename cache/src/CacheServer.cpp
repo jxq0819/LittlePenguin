@@ -62,13 +62,13 @@ void CacheServer::existConnection(int event_i) {
                 throw std::runtime_error("recv() error \n");
             } else {
                 /* --------------------------- 解析读取到的数据包，并响应数据包的命令 --------------------------- */
-                std::cout << "Receive message from client fd: " << ep_ev.data.fd << std::endl;
+                std::cout << "Receive message from client fdfd: " << ep_ev.data.fd << std::endl;
                 CMCData recv_cmc_data;
                 recv_cmc_data.ParseFromArray(recv_buf_max, recv_size);
                 // 此处先把数据包信息打印出来
                 string debug_str = recv_cmc_data.DebugString();
                 cout << debug_str << endl;
-                cout << "DebugString() end!" << endl;
+                cout << "DebugString() endendl!" << endl;
 
                 // 判断是否为下线确认数据包，如果是下线包，并且曾经的确申请过下线，则进程结束
                 if (recv_cmc_data.data_type() == CMCData::ACKINFO) {
@@ -83,6 +83,7 @@ void CacheServer::existConnection(int event_i) {
                 }
 
                 // 解析数据包，并生成回复数据包
+                cout << "will parseData()" << endl;
                 CMCData resp_data;                                     // 先定义一个回复数据包，作为parseData传入传出参数
                 bool parse_ret = parseData(recv_cmc_data, resp_data);  // 在parseData中会完成数据包的解析，并将响应数据注册进resp_data中
                 if (parse_ret == false)
@@ -122,6 +123,7 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
     switch (recv_data.data_type()) {
         // 如果是命令数据包，则执行命令并传出回复数据包
         case CMCData::COMMANDINFO: {
+            cout << "case CMCData::COMMANDINFO" << endl;
             return executeCommand(recv_data.cmd_info(), response_data);
         }
 
@@ -138,6 +140,7 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
         // 这时你需要：m_hashslot_new.addCacheNode(const CacheNode&)或m_hashslot_new.remCacheNode(const CacheNode&)
         // 并在完成数据迁移后，向response_data中写入HASHSLOTUPDATEACK数据包信息（表达完成数迁完成的确认）
         case CMCData::HASHSLOTINFO: {
+            cout << "CMCData::HASHSLOTINFO:" << endl;
             if (dataMigration(recv_data.hs_info(), response_data)) {
                 // 更新本地old哈希槽
                 std::lock_guard<std::mutex> lock_g(this->m_hashslot_mutex);  // 为更新本地old哈希槽操作上锁
@@ -232,7 +235,9 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
     switch (cmd_info.cmd_type()) {
         /*----------------------------- GET -----------------------------*/
         case CommandInfo::GET: {
+            cout << "CommandInfo::GET" << endl;
             string key = cmd_info.param1();
+            cout << "key: " << key << endl;
             // 如果命令数据包中的：key字段不为空，且param2()(即value)为空，则查询并注册响应数据包response_data
             if (!key.empty() && cmd_info.param2().empty()) {
                 string value;
@@ -243,6 +248,7 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                 }
                 // 如果在本cache的查询不为空，则直接返回此结果即可
                 if (!value.empty()) {
+                    cout << "value: " << value << endl;
                     // 封装KvData键值包
                     KvData kv_data;
                     kv_data.set_key(key);

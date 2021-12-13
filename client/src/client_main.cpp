@@ -80,6 +80,10 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    // 设置本地端口复用，这样master才能主动联系上client
+    int opt = 1;
+    setsockopt(socketfd_to_master, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
     // 阻塞连接master
     if (connect(socketfd_to_master, (struct sockaddr*)&master_addr, sizeof(sockaddr_in)) < 0) {
         perror("connect() error\n");
