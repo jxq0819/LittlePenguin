@@ -20,7 +20,7 @@
 // MasterServer构造函数，设置客户端最大连接个数
 MasterServer::MasterServer(int maxWaiter) : TcpServer(maxWaiter) {
     // 线程池预先开启8个线程
-    threadPool = std::make_unique<ThreadPool>(8);
+    threadPool = std::make_unique<ThreadPool>(20);
     hash_slot_ = std::make_unique<HashSlot>();    // New empty hash_slot
 }
 
@@ -222,24 +222,28 @@ void MasterServer::startHeartbeartService(MasterServer *m)
         bool all_good = true;
 // acquire lock
 {       std::lock_guard<std::mutex> lock(m->cache_links_mutex_);
-        for (auto it = m->cache_links_.begin(); it != m->cache_links_.end(); ++it) {
+        for (auto it = m->cache_links_.begin(); it != m->cache_links_.end(); /* empty */) {
             std::cout << "Current time is " << t << ", cache " << it->first.first << ":" << it->first.second << " last seen at " << it->second.time << std::endl;
             if (t - it->second.time > HEARTBEAT_TIMEOUT) {    // Heartbeat lost
                 std::cout << "Lost cache server " << it->first.first << ":" << it->first.second << "\n";
                 m->task_queue_.Push({TASK_LOST, it->first});    // add a task to deal with the lost cache server
-                m->cache_links_.erase(it);                      // remove the lost cache server from cache_links_
+                it = m->cache_links_.erase(it);                 // remove the lost cache server from cache_links_
                 all_good = false;
                 // std::cout << *(m->hash_slot_) << std::endl;
+            } else {
+                ++it;
             }
         }
 }
         // 维护黑名单
 // acquire lock
 {       std::lock_guard<std::mutex> lock(m->blacklist_mutex_);
-        for (auto it = m->blacklist_.begin(); it != m->blacklist_.end(); ++it) {
+        for (auto it = m->blacklist_.begin(); it != m->blacklist_.end(); /* empty */) {
             if (t - it->second > BLACKLIST_TIMEOUT) {
                 std::cout << it->first.first << ":" << it->first.second << " removed from the blacklist\n" << std::endl;
-                m->blacklist_.erase(it);
+                it = m->blacklist_.erase(it);
+            } else {
+                ++it;
             }
         }
 }
@@ -667,19 +671,30 @@ void MasterServer::startHashslotService(MasterServer *m)
                 close(sockfd);
             }
             // construct and send the hashslot change info
+            // CMCData cmc_data;
+            // cmc_data.set_data_type(CMCData::HASHSLOTINFO);
+            // HashSlotInfo hs_info;
+            // new_hash_slot->saveTo(hs_info);
+            // cmc_data.mutable_hs_info()->CopyFrom(hs_info);
+            // std::cout << cmc_data.DebugString() << std::endl;                   // debug string
+            // std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
+
+            // char send_buff_big[BUFF_SIZE_LONG];
+            // bzero(send_buff_big, BUFF_SIZE_LONG);
+            // cmc_data.SerializeToArray(send_buff_big, cmc_data.ByteSizeLong());
+            // std::cout << "After SerializeToArray8: " << strlen(send_buff) << std::endl;
+            // int send_size = send(sockfd, send_buff_big, cmc_data.ByteSizeLong(), 0);
             CMCData cmc_data;
             cmc_data.set_data_type(CMCData::HASHSLOTINFO);
-            HashSlotInfo hs_info;
-            new_hash_slot->saveTo(hs_info);
-            cmc_data.mutable_hs_info()->CopyFrom(hs_info);
+            auto hs_info_ptr = cmc_data.mutable_hs_info();
+            hs_info_ptr->set_hashinfo_type(HashSlotInfo::REMCACHE);
+            auto cache_info = hs_info_ptr->mutable_cache_node();
+            cache_info->set_ip(addr.first);
+            cache_info->set_port(addr.second);
             std::cout << cmc_data.DebugString() << std::endl;                   // debug string
             std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-
-            char send_buff_big[BUFF_SIZE_LONG];
-            bzero(send_buff_big, BUFF_SIZE_LONG);
-            cmc_data.SerializeToArray(send_buff_big, cmc_data.ByteSizeLong());
-            std::cout << "After SerializeToArray8: " << strlen(send_buff) << std::endl;
-            int send_size = send(sockfd, send_buff_big, cmc_data.ByteSizeLong(), 0);
+            cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
+            int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
 
             std::cout << "send_size: " << send_size << std::endl;
             if (send_size < 0) {
@@ -704,8 +719,8 @@ void MasterServer::startHashslotService(MasterServer *m)
             cmc_data.SerializeToArray(testbuf, BUFF_SIZE);
             std::cout << cmc_data.DebugString() << std::endl;
 
-            send_size = send(sockfd, testbuf, BUFF_SIZE, 0);
-            usleep(1000);
+            send_size = send(sockfd, testbuf, cmc_data.ByteSizeLong(), 0);
+            // usleep(1000);
 
             if (send_size < 0) {
                 std::cout << "Send OFFLINEACK failed!" << std::endl;
