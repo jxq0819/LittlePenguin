@@ -62,13 +62,13 @@ void CacheServer::existConnection(int event_i) {
                 throw std::runtime_error("recv() error \n");
             } else {
                 /* --------------------------- 解析读取到的数据包，并响应数据包的命令 --------------------------- */
-                std::cout << "Receive message from client fdfd: " << ep_ev.data.fd << std::endl;
+                std::cout << "Receive message from client fd: " << ep_ev.data.fd << std::endl;
                 CMCData recv_cmc_data;
                 recv_cmc_data.ParseFromArray(recv_buf_max, recv_size);
                 // 此处先把数据包信息打印出来
                 string debug_str = recv_cmc_data.DebugString();
                 cout << debug_str << endl;
-                cout << "DebugString() endendl!" << endl;
+                cout << "DebugString() end!" << endl;
 
                 // 判断是否为下线确认数据包，如果是下线包，并且曾经的确申请过下线，则进程结束
                 if (recv_cmc_data.data_type() == CMCData::ACKINFO) {
@@ -83,7 +83,6 @@ void CacheServer::existConnection(int event_i) {
                 }
 
                 // 解析数据包，并生成回复数据包
-                cout << "will parseData()" << endl;
                 CMCData resp_data;                                     // 先定义一个回复数据包，作为parseData传入传出参数
                 bool parse_ret = parseData(recv_cmc_data, resp_data);  // 在parseData中会完成数据包的解析，并将响应数据注册进resp_data中
                 if (parse_ret == false)
@@ -123,7 +122,6 @@ bool CacheServer::parseData(const CMCData& recv_data, CMCData& response_data) {
     switch (recv_data.data_type()) {
         // 如果是命令数据包，则执行命令并传出回复数据包
         case CMCData::COMMANDINFO: {
-            cout << "case CMCData::COMMANDINFO" << endl;
             return executeCommand(recv_data.cmd_info(), response_data);
         }
 
@@ -235,16 +233,18 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
     switch (cmd_info.cmd_type()) {
         /*----------------------------- GET -----------------------------*/
         case CommandInfo::GET: {
-            cout << "CommandInfo::GET" << endl;
             string key = cmd_info.param1();
             cout << "key: " << key << endl;
+            cout << "param2: " << cmd_info.param2().empty() << endl;
             // 如果命令数据包中的：key字段不为空，且param2()(即value)为空，则查询并注册响应数据包response_data
             if (!key.empty() && cmd_info.param2().empty()) {
                 string value;
                 {
                     // 先尝试查询，查询成功则value不为空，后续返回结果包即可，失败则检查是否正在数据迁移
                     std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.get操作上锁
+                    cout << "will value = m_cache.get(key);" << endl;
                     value = m_cache.get(key);
+                    cout << "value" << value << endl;
                 }
                 // 如果在本cache的查询不为空，则直接返回此结果即可
                 if (!value.empty()) {
@@ -271,6 +271,18 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                         // 发送查询命令数据包到另外一台主机，SendCommandData函数内部会写入收到的结果信息于response_data中并传出
                         if (SendCommandData(another_cmc_data, another_cache_ip, another_cache_port, response_data) == false)
                             cout << "send GET command to another cache fail." << endl;
+                        return true;  // 函数正常返回
+                    } else {
+                        // 查询为空，且cache不在数据数据迁移，返回空结果给客户端即可
+                        cout << "value: " << value << endl;
+                        // 封装KvData键值包
+                        KvData kv_data;
+                        kv_data.set_key(key);
+                        kv_data.set_value(value);
+                        // 注册封装CMCData数据包
+                        response_data.set_data_type(CMCData::KVDATA);
+                        auto kv_data_ptr = response_data.mutable_kv_data();
+                        kv_data_ptr->CopyFrom(kv_data);
                         return true;  // 函数正常返回
                     }
                 }

@@ -44,7 +44,7 @@ void LRUCache::addToHead(DListNode* node) {
 }
 
 std::string LRUCache::get(const std::string& key) {
-    if (key.empty() && !m_map.count(key)) {
+    if (key.empty() || !m_map.count(key)) {
         return "";
     }
     DListNode* node = m_map[key];
