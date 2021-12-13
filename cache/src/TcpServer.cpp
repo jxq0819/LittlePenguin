@@ -11,6 +11,8 @@ TcpServer::TcpServer(int maxWaiter) {
 
     m_listen_sockfd = m_tcpSocket->getSockFD();
     m_epfd = epoll_create1(0);  // Same as epoll_create() but with an FLAGS parameter.
+    
+    m_epoll_is_ready = false;   // 先设置epoll未就绪，等正式epoll了再设为true
 }
 
 // 服务器端：绑定(bind)地址信息并设置最大监听(listen)个数
@@ -39,6 +41,7 @@ bool TcpServer::startService(int timeout) {
         return false;
     }
 
+    m_epoll_is_ready = true;
     // 服务器的监听循环
     while (true) {
         int nfds = epoll_wait(m_epfd, m_epollEvents, MAX_EVENTS, timeout);

@@ -137,7 +137,7 @@ void MasterServer::existConnection(int event_i) {
                                 std::cout << send_cmc_data.DebugString() << std::endl;                   // debug string
                                 std::cout << "Data Size: " << send_cmc_data.ByteSizeLong() << std::endl;
                                 send_cmc_data.SerializeToArray(send_buff, BUFF_SIZE_LONG);
-                                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                                std::cout << "After SerializeToArray1: " << strlen(send_buff) << std::endl;
                                 send_size = send(m_epollEvents[event_i].data.fd, send_buff, send_cmc_data.ByteSizeLong(), 0);
                                 std::cout << "send_size: " << send_size << std::endl;
                                 if (send_size < 0) {
@@ -310,7 +310,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                std::cout << "After SerializeToArray2: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
                 if (send_size < 0) {
@@ -360,7 +360,7 @@ void MasterServer::startHashslotService(MasterServer *m)
             std::cout << cmc_data.DebugString() << std::endl;                   // debug string
             std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
             cmc_data.SerializeToArray(send_buff, BUFF_SIZE_LONG);
-            std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+            std::cout << "After SerializeToArray3: " << strlen(send_buff) << std::endl;
             int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
             std::cout << "send_size: " << send_size << std::endl;
             if (send_size < 0) {
@@ -424,7 +424,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                std::cout << "After SerializeToArray4: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
                 if (send_size < 0) {
@@ -493,7 +493,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                std::cout << "After SerializeToArray5: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
                 if (send_size < 0) {
@@ -554,7 +554,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                std::cout << "After SerializeToArray6: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
                 if (send_size < 0) {
@@ -626,7 +626,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << cmc_data.DebugString() << std::endl;                   // Debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                std::cout << "After SerializeToArray7 " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
                 if (send_size < 0) {
@@ -674,9 +674,13 @@ void MasterServer::startHashslotService(MasterServer *m)
             cmc_data.mutable_hs_info()->CopyFrom(hs_info);
             std::cout << cmc_data.DebugString() << std::endl;                   // debug string
             std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-            cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-            std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
-            int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
+
+            char send_buff_big[BUFF_SIZE_LONG];
+            bzero(send_buff_big, BUFF_SIZE_LONG);
+            cmc_data.SerializeToArray(send_buff_big, cmc_data.ByteSizeLong());
+            std::cout << "After SerializeToArray8: " << strlen(send_buff) << std::endl;
+            int send_size = send(sockfd, send_buff_big, cmc_data.ByteSizeLong(), 0);
+
             std::cout << "send_size: " << send_size << std::endl;
             if (send_size < 0) {
                 std::cout << "Send hashslot change failed!" << std::endl;
@@ -689,16 +693,20 @@ void MasterServer::startHashslotService(MasterServer *m)
             }
             // send OFFLINEACK
             std::cout << "Sending OFFLINEACK..." << std::endl;
-            bzero(send_buff, BUFF_SIZE);
+            char testbuf[BUFF_SIZE];
+            bzero(testbuf, BUFF_SIZE);
             AckInfo ack_info;
             ack_info.set_ack_type(AckInfo::OFFLINEACK);
             ack_info.set_ack_status(AckInfo::OK);
             cmc_data.Clear();
             cmc_data.set_data_type(CMCData::ACKINFO);
             cmc_data.mutable_ack_info()->CopyFrom(ack_info);
-            cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
+            cmc_data.SerializeToArray(testbuf, BUFF_SIZE);
             std::cout << cmc_data.DebugString() << std::endl;
-            send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
+
+            send_size = send(sockfd, testbuf, BUFF_SIZE, 0);
+            usleep(1000);
+
             if (send_size < 0) {
                 std::cout << "Send OFFLINEACK failed!" << std::endl;
             }
@@ -766,7 +774,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 std::cout << cmc_data.DebugString() << std::endl;                   // debug string
                 std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
                 cmc_data.SerializeToArray(send_buff, BUFF_SIZE);
-                std::cout << "After SerializeToArray: " << strlen(send_buff) << std::endl;
+                std::cout << "After SerializeToArray9: " << strlen(send_buff) << std::endl;
                 int send_size = send(sockfd, send_buff, cmc_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << send_size << std::endl;
                 if (send_size < 0) {

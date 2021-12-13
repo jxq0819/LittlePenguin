@@ -64,8 +64,7 @@ void CacheServer::existConnection(int event_i) {
                 /* --------------------------- 解析读取到的数据包，并响应数据包的命令 --------------------------- */
                 std::cout << "Receive message from client fd: " << ep_ev.data.fd << std::endl;
                 CMCData recv_cmc_data;
-                recv_cmc_data.ParseFromArray(recv_buf_max, sizeof(recv_buf_max));
-
+                recv_cmc_data.ParseFromArray(recv_buf_max, recv_size);
                 // 此处先把数据包信息打印出来
                 string debug_str = recv_cmc_data.DebugString();
                 cout << debug_str << endl;
@@ -210,16 +209,17 @@ bool CacheServer::beginHeartbeatThread(const struct sockaddr_in& master_addr, so
             }
 
             /*-------------向master端发送心跳/下线数据-------------*/
-            int send_size = send(heart_sock, heart_send_buff, data_size, 0);
-            // cout << "heart_send_size: " << send_size << endl;
-            if (send_size > 0 && print_success_msg) {
-                cout << "Heartbeat thread started successfully!" << send_size << endl;
-                print_success_msg = false;
-            } else if (send_size < 0) {
-                std::cout << "heartbeat sending failed!" << std::endl;
-                return false;
+            if (this->m_epoll_is_ready) {
+                int send_size = send(heart_sock, heart_send_buff, data_size, 0);
+                if (send_size > 0 && print_success_msg) {
+                    cout << "Heartbeat thread started successfully!" << send_size << endl;
+                    print_success_msg = false;
+                } else if (send_size < 0) {
+                    std::cout << "heartbeat sending failed!" << std::endl;
+                    return false;
+                }
+                sleep(1);  // 一秒发送一次心跳
             }
-            sleep(1);  // 一秒发送一次心跳
         }
     });
 

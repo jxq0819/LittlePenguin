@@ -41,4 +41,6 @@ class TcpServer {
     epoll_event m_epollEvents[MAX_EVENTS];  // epoll事件队列
     int m_epfd;                             // epoll的fd
     int m_listen_sockfd;
+    
+    bool m_epoll_is_ready;  // epoll监听就绪状态标识，发心跳前检查此变量是否为true，避免还没准备好监听master就发消息过来了
 };
