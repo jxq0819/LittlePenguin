@@ -44,7 +44,9 @@ void MasterServer::newConnection() {
     // record the Addr {ip,port} 
     char p_addr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(new_addr.sin_addr.s_addr), p_addr, sizeof(p_addr));    // convert IP address from numeric to presentation
-    links_.insert({std::string(p_addr), ntohs(new_addr.sin_port)});                    // add the Addr of the new connection to [links_]
+    { std::lock_guard<std::mutex> lock(links_mutex_);
+        links_.insert({std::string(p_addr), ntohs(new_addr.sin_port)});                    // add the Addr of the new connection to [links_]
+    }
     std::cout << p_addr << ":" << ntohs(new_addr.sin_port) << " has connected" << std::endl;
 
     // 注册与这个客户端有关的事件
@@ -83,10 +85,12 @@ void MasterServer::existConnection(int event_i) {
             client_links_.erase({std::string(p_addr), ntohs(left_addr.sin_port)});                // remove if exist, otherwise do nothing
 }
             std::cout << p_addr << ":" << ntohs(left_addr.sin_port) << " left" << std::endl;
+            int fd = this->m_epollEvents[event_i].data.fd;
             // 将其从epoll树上摘除
             if (epoll_ctl(m_epfd, EPOLL_CTL_DEL, m_epollEvents[event_i].data.fd, NULL) < 0) {
                 throw std::runtime_error("delete client error\n");
             }
+            close(fd);    // close and release the fd
         } else if (this->m_epollEvents[event_i].events & EPOLLIN) {
             // 如果与客户端连接的该套接字的输入缓存中有收到数据
             char buf[BUFF_SIZE];
@@ -143,12 +147,7 @@ void MasterServer::existConnection(int event_i) {
                                 if (send_size < 0) {
                                     std::cout << "Send hashslot change failed!" << std::endl;
                                 }
-                                // wait for HASHSLOTUPDATEACK
-                                if (checkAckInfo(m_epollEvents[event_i].data.fd, AckInfo::HASHSLOTUPDATEACK)) {
-                                    std::cout << "HASHSLOTUPDATEACK from client received!" << std::endl;
-                                } else {
-                                    std::cout << "HASHSLOTUPDATEACK from client receive error!" << std::endl;
-                                }
+                                // wait for HASHSLOTUPDATEACK --- WILL BE CAPTURED BY EPOLL since it is a active connection from the client, thus registered in epoll!
                                 break;
                             // Other cases
                             case CommandInfo::OFFLINE:
@@ -181,6 +180,7 @@ void MasterServer::existConnection(int event_i) {
                             // check if the heartbeat is from a cache server in the blacklist
                             inBlacklist = blacklist_.count({std::string(p_addr), ntohs(addr.sin_port)});
 }
+                            std::cout << "inBlackList = " << inBlacklist << std::endl;
                             if (!inBlacklist) {
                                 std::lock_guard<std::mutex> lock(cache_links_mutex_);
                                 if (cache_links_.count({std::string(p_addr), ntohs(addr.sin_port)})) {
@@ -192,8 +192,11 @@ void MasterServer::existConnection(int event_i) {
                             }
                         }
                         break;
-                    // Other cases
-                    default:;
+                    case CMCData::ACKINFO:
+                        std::cout << "HASHSLOTUPDATEACK from a new client received!" << std::endl;
+                        break;
+                    default:
+                        std::cout << "Undefined Message Received!"  << std::endl;
                 }
             }
         } else {  // 未知错误
@@ -250,6 +253,13 @@ void MasterServer::startHeartbeartService(MasterServer *m)
         if (all_good) { 
             // std::cout << "All cache servers are good\n";
             std::cout << *(m->hash_slot_) << std::endl;
+            // print all clients
+            std::cout << "Clients:\n";
+            { std::lock_guard<std::mutex> lock(m->client_links_mutex_);
+                for (auto &client : m->client_links_) {
+                    std::cout << client.first << ":" << client.second << std::endl;
+                }
+            }
         }
         std::cout << "-------------------------------------------" << std::endl;
         sleep(1);
@@ -581,7 +591,7 @@ void MasterServer::startHashslotService(MasterServer *m)
             // 4. after notifying the leaving node OFFLINEACK, add it to the blacklist, ignore furthur heartbeat from the same node
             // 5. then remove the already left node from cache_links_
             // 6. replace the old hashslot
-            // 7. notify all clients of the CHANGE fo the hashslot
+            // 7. notify all clients of the CHANGE of the hashslot
             std::unique_ptr<HashSlot> new_hash_slot;
 // acquire lock
 {           std::lock_guard<std::mutex> lock(m->hash_slot_mutex_);
@@ -670,20 +680,7 @@ void MasterServer::startHashslotService(MasterServer *m)
                 perror("connect() error\n");
                 close(sockfd);
             }
-            // construct and send the hashslot change info
-            // CMCData cmc_data;
-            // cmc_data.set_data_type(CMCData::HASHSLOTINFO);
-            // HashSlotInfo hs_info;
-            // new_hash_slot->saveTo(hs_info);
-            // cmc_data.mutable_hs_info()->CopyFrom(hs_info);
-            // std::cout << cmc_data.DebugString() << std::endl;                   // debug string
-            // std::cout << "Data Size: " << cmc_data.ByteSizeLong() << std::endl;
-
-            // char send_buff_big[BUFF_SIZE_LONG];
-            // bzero(send_buff_big, BUFF_SIZE_LONG);
-            // cmc_data.SerializeToArray(send_buff_big, cmc_data.ByteSizeLong());
-            // std::cout << "After SerializeToArray8: " << strlen(send_buff) << std::endl;
-            // int send_size = send(sockfd, send_buff_big, cmc_data.ByteSizeLong(), 0);
+            // 制作节点变化数据包
             CMCData cmc_data;
             cmc_data.set_data_type(CMCData::HASHSLOTINFO);
             auto hs_info_ptr = cmc_data.mutable_hs_info();
@@ -718,10 +715,7 @@ void MasterServer::startHashslotService(MasterServer *m)
             cmc_data.mutable_ack_info()->CopyFrom(ack_info);
             cmc_data.SerializeToArray(testbuf, BUFF_SIZE);
             std::cout << cmc_data.DebugString() << std::endl;
-
             send_size = send(sockfd, testbuf, cmc_data.ByteSizeLong(), 0);
-            // usleep(1000);
-
             if (send_size < 0) {
                 std::cout << "Send OFFLINEACK failed!" << std::endl;
             }
@@ -737,7 +731,16 @@ void MasterServer::startHashslotService(MasterServer *m)
             // remove the permitted-to-leave node from the cache_links_
             m->cache_links_.erase({addr.first, addr.second});
 }
-            close(sockfd);
+            // MUST NOT immediately close(sockfd);
+            // 用epoll关闭sockfd
+            epoll_event ev;
+            bzero(&ev, sizeof(ev));
+            ev.events = EPOLLET;        // register socket close, use EPOLLLET only!
+            ev.data.fd = sockfd;
+            if (epoll_ctl(m->m_epfd, EPOLL_CTL_ADD, sockfd, &ev) < 0) {
+                std::cout << "register event error\n";
+                return;
+            }
 // acquire lock
 {           std::lock_guard<std::mutex> lock(m->hash_slot_mutex_);
             // then transfer the ownership of the hashslot ptr and notify each client of the new hashslot
@@ -832,3 +835,4 @@ bool checkAckInfo(int sockfd, int ackType)
     }
     return false;
 }
+ 

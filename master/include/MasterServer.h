@@ -15,7 +15,7 @@
 #define TASK_LOST 1
 #define TASK_SHUT 2
 #define DELAY_TIMEOUT 1       // 网络时延超时时间（秒）
-#define HEARTBEAT_TIMEOUT 5   // 心跳超时时间（秒）
+#define HEARTBEAT_TIMEOUT 3   // 心跳超时时间（秒）
 #define BLACKLIST_TIMEOUT 5   // 黑名单超时时间（秒）
 #define BUFF_SIZE       2048        // 2KB
 #define BUFF_SIZE_LONG  1024000     // 1MB

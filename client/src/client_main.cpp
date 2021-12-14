@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #include <ctime>
@@ -23,6 +24,7 @@ using namespace std;
 #include "command.h"
 
 #define MAX_BUF_SIZE 212992
+#define BUF_SIZE 2048
 
 int main(int argc, char* argv[]) {
     if (argc <= 2) {
@@ -33,28 +35,12 @@ int main(int argc, char* argv[]) {
     /* ---------------------全局变量区--------------------- */
     char cache_ip[16];         // 目的主机ip
     u_int16_t cache_port = 0;  // 目的主机port
-    HashSlot hashslot;         // 本地哈希槽对象
+    HashSlot local_hashslot;         // 本地哈希槽对象
     // char read_buf[BUFSIZ];            //普通大小的缓存
     char recv_buf_max[MAX_BUF_SIZE];  // 为了接受类似于hashslot型的大字节数据，保险起见就开了这么大的空间
+    char send_buf_max[BUF_SIZE];
 
-    /* ---------------------------------------------------- */
-
-    /* -----------------------本地调试代码（后续不需要这段代码）----------------------------- */
-    // HashSlotInfo hashslot_info;  //哈希槽信息
-    // hashslot.addCacheNode(CacheNode("Cache1", "127.0.0.1", 5001));
-    // hashslot.addCacheNode(CacheNode("Cache2", "127.0.0.2", 5002));
-    // hashslot.saveTo(hashslot_info);  // 生成本地哈希槽信息
-    // CMCData hashslot_data;
-    // hashslot_data.set_data_type(CMCData::COMMANDINFO);
-    // auto hs_info_ptr = hashslot_data.mutable_hs_info();
-    // hs_info_ptr->CopyFrom(hashslot_info);
-    // //
-    // string hashslot_data_str = hashslot_data.DebugString();
-    // cout << hashslot_data_str << endl;  // Print the debugging string
-
-    // CommandInfo testcmdinfo;
-    // testcmdinfo.set_cmd_type(CommandInfo::SET);
-
+    //
     /* ---------------------------------------------------------------------------------------*/
 
     // 注册master主机地址信息
@@ -90,65 +76,173 @@ int main(int argc, char* argv[]) {
         close(socketfd_to_master);
         return -1;
     }
-
     cout << "connect master server success!" << endl;
     cout << "enter [Q]/[q] to quit." << endl;
 
     /* --------------- 和master连接成功的第一件事就是拉取哈希槽信息（GETSLOT） --------------- */
-    if (get_slot(socketfd_to_master, hashslot) == false) {
+    if (get_slot(socketfd_to_master, local_hashslot) == false) {
         cout << "get_slot() fail." << endl;
         return -1;
     } else {
         cout << "get_slot() successful." << endl;
     }
 
+    /* --------------- 绑定本机地址并监听master的请求连接 --------------- */
+    int client_listen_sock = socket(AF_INET, SOCK_STREAM, 0);
+    int connfd_from_master;
+
+    // 设置本地端口复用，这样master才能主动联系上client
+    setsockopt(client_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    // int on = 1;
+    // int rc = ioctl(client_listen_sock, FIONBIO, (char *)&on);
+    // if (rc < 0)
+    // {
+    //     perror("ioctl() failed");
+    //     close(client_listen_sock);
+    //     exit(-1);
+    // }
+
+    // 本机client地址信息
+    sockaddr_in client_addr;
+    bzero(&client_addr, sizeof(client_addr));
+    socklen_t len = sizeof(client_addr);
+    getsockname(socketfd_to_master, (sockaddr*)&client_addr, &len);
+
+    int myport;                     // client自己的端口号
+    myport = ntohs(client_addr.sin_port);
+    std::cout << "myport = " << myport << std::endl;
+
+    if (bind(client_listen_sock, (struct sockaddr*)&client_addr, sizeof(client_addr)) < 0) {
+        perror("bind error");
+        return -1;
+    }
+    if (listen(client_listen_sock, 5) < 0) {
+        perror("listen error");
+        return -1;
+    }
+
     /* --------------- poll I/O复用监测不同事件的发生 --------------- */
-    pollfd fd_array[2];  //监听事件数组
+    pollfd fd_array[4];  //监听事件数组
     // --------注册第一种事件：标准输入引发的事件
     fd_array[0].fd = STDIN_FILENO;  // 读取标准输入
     fd_array[0].events = POLLIN;
     fd_array[0].revents = 0;  // 初始化
 
-    // --------注册第二种事件：网络套接字事件
-    fd_array[1].fd = socketfd_to_master;  // 处理socket事件
+    // --------注册第二种事件：client请求master这条tcp连接的网络io事件
+    fd_array[1].fd = socketfd_to_master;
     // 对端连接断开触发的poll事件会包含：EPOLLIN | EPOLLRDHUP，这ET模式下非常有用
     fd_array[1].events = POLLIN | POLLRDHUP;
     fd_array[1].revents = 0;
 
+    // --------注册第s三种事件：master请求client建立连接的网络io事件
+    fd_array[2].fd = client_listen_sock;  // 处理socket事件
+    // 对端连接断开触发的poll事件会包含：EPOLLIN | EPOLLRDHUP，这ET模式下非常有用
+    fd_array[2].events = POLLIN;
+    fd_array[2].revents = 0;
+
     // poll循环监听io事件
     while (1) {
-        int ret = poll(fd_array, 2, -1);  // 这里阻塞等待事件发生
+        int ret = poll(fd_array, 4, -1);  // 这里阻塞等待事件发生
         if (ret < 0) {
             perror("poll() error\n");
             return -1;
         }
 
+        // if (ret)
+        //     std::cout << ret << std::endl;
+
         // 发生对端（服务端）断开关闭事件，清空读缓冲数据
         if (fd_array[1].revents & POLLRDHUP) {
             bzero(recv_buf_max, sizeof(recv_buf_max));
-            printf("master close the connection\n");
+            printf("master close the connection1\n");
             break;
         }
-
-        /* -------- 发生对端套接字输入事件(一般是来自master主动哈希槽更新通知)，遇到这种情况，需要更新本地哈希槽 --------- */
-        if (fd_array[1].revents & POLLIN) {
+        /* -------- 刚连上master后，master会发所有节点的hashslot，收到后更新本地哈希槽 --------- */
+        /* ------------------ 如果合并1、2连接后这个有用 ----------------------------------- */
+        if ((fd_array[1].revents & POLLIN)) {
             // 接受数据
             bzero(recv_buf_max, sizeof(recv_buf_max));
             int recv_size = recv(fd_array[1].fd, recv_buf_max, sizeof(recv_buf_max), 0);
             CMCData recv_data;
             recv_data.ParseFromArray(recv_buf_max, recv_size);
-            // 处理数据
-            // string recv_info_str = recv_data.DebugString();
-            // cout << recv_info_str << endl;
+            //
+            string recv_info_str = recv_data.DebugString();
+            cout << recv_info_str << endl;
             switch (recv_data.data_type()) {
                 // 如果真的是哈希槽信息包，那就更新哈希槽
                 case CMCData::HASHSLOTINFO:
 
-                    hashslot.restoreFrom(recv_data.hs_info());
+                    local_hashslot.restoreFrom(recv_data.hs_info());
 
                     break;
                 default:
                     break;
+            }
+        }
+
+        // master主动请求连接，则accpet，并注册有关事件
+        if ((fd_array[2].revents & POLLIN)) {
+            if ((connfd_from_master = accept(client_listen_sock, (struct sockaddr*)NULL, NULL)) < 0) {
+                printf("accept master fail: %s\n", strerror(errno));
+                break;
+            }
+            fd_array[3].fd = connfd_from_master;
+            fd_array[3].events = POLLIN | POLLRDHUP;
+        }
+
+        // 发生对端（服务端）断开关闭事件，清空读缓冲数据
+        if (fd_array[3].revents & POLLRDHUP) {
+            bzero(recv_buf_max, sizeof(recv_buf_max));
+            printf("master close the connection2\n");
+            // break;
+            // reset the event
+            fd_array[3].fd = -1;
+            fd_array[3].events = POLLIN | POLLRDHUP;
+            fd_array[3].revents = 0;
+        }
+        // master发数据过来了
+        if ((fd_array[3].revents & POLLIN)) {
+            cout << "fd_array[3].revents & POLLIN" << endl;
+            // 接受数据
+            bzero(recv_buf_max, sizeof(recv_buf_max));
+            int recv_size = recv(fd_array[3].fd, recv_buf_max, sizeof(recv_buf_max), 0);
+            CMCData recv_data;
+            recv_data.ParseFromArray(recv_buf_max, recv_size);
+            cout << recv_data.DebugString() << endl;
+            cout << "DebugString() end" << endl; 
+            CMCData send_data;
+            AckInfo ack_info;
+
+            if (recv_data.data_type() == CMCData::HASHSLOTINFO) {
+                if (recv_data.hs_info().hashinfo_type() == HashSlotInfo::ALLCACHEINFO) {
+                    local_hashslot.restoreFrom(recv_data.hs_info());
+                }
+                if (recv_data.hs_info().hashinfo_type() == HashSlotInfo::ADDCACHE) {
+                    string add_node_ip = recv_data.hs_info().cache_node().ip();
+                    int add_node_port = recv_data.hs_info().cache_node().port();
+                    local_hashslot.addCacheNode(CacheNode(add_node_ip, add_node_port));
+                }
+                if (recv_data.hs_info().hashinfo_type() == HashSlotInfo::REMCACHE) {
+                    string rem_node_ip = recv_data.hs_info().cache_node().ip();
+                    int rem_node_port = recv_data.hs_info().cache_node().port();
+                    local_hashslot.remCacheNode(CacheNode(rem_node_ip, rem_node_port));
+                }
+                printf("the local hashslot has updated\n");
+
+                // reply to master with HASHSLOTUPDATEACK
+                ack_info.set_ack_type(AckInfo::HASHSLOTUPDATEACK);
+                ack_info.set_ack_status(AckInfo::OK);
+                send_data.set_data_type(CMCData::ACKINFO);
+                send_data.mutable_ack_info()->CopyFrom(ack_info);
+                bzero(send_buf_max, sizeof(send_buf_max));
+                send_data.SerializeToArray(send_buf_max, sizeof(send_buf_max));
+                int send_size = send(fd_array[3].fd, send_buf_max, send_data.ByteSizeLong(), 0);
+                if (send_size < 0) {
+                    std::cout << "Send HASHSLOTUPDATEACK failed!" << std::endl;
+                }
+            } else {
+                printf("the type of recv_data is not CMCData::HASHSLOTINFO\n");
             }
         }
 
@@ -202,9 +296,11 @@ int main(int argc, char* argv[]) {
                 my_cmc_data = MakeCommandData(CommandInfo::SET, param_1, param_2);
             } else if ((command == "DEL" || command == "del") && param_count == 2) {
                 my_cmc_data = MakeCommandData(CommandInfo::DEL, param_1, "");
+            } else {
+                continue;
             }
-            strcpy(cache_ip, hashslot.getCacheAddr(param_1).first.c_str());  // 从hashslot中查询cache地址
-            cache_port = hashslot.getCacheAddr(param_1).second;
+            strcpy(cache_ip, local_hashslot.getCacheAddr(param_1).first.c_str());  // 从local_hashslot中查询cache地址
+            cache_port = local_hashslot.getCacheAddr(param_1).second;
             cout << "will SendCommandData" << endl;
             CMCData result_data;                                                           // 访问的结果数据包
             if (SendCommandData(my_cmc_data, cache_ip, cache_port, result_data) == false)  // 发送命令数据包给cache

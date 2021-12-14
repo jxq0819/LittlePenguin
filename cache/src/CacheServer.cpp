@@ -26,7 +26,7 @@ void CacheServer::newConnection() {
     epoll_event ev;
     bzero(&ev, sizeof(ev));
     ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-    // ev.events = EPOLLIN | EPOLLRDHUP;
+    // ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLONESHOT;
     ev.data.fd = connfd;
     if (epoll_ctl(m_epfd, EPOLL_CTL_ADD, connfd, &ev) < 0) {
         // throw std::runtime_error("register event error\n");
@@ -76,6 +76,7 @@ void CacheServer::existConnection(int event_i) {
                         if (recv_cmc_data.ack_info().ack_status() == AckInfo::OK) {
                             if (offline_applied == true) {
                                 cout << "cache offline successful!" << endl;
+                                close(ep_ev.data.fd);   // close fd before exit
                                 exit(1);
                             }
                         }
@@ -486,11 +487,41 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
         int cache_port_self = m_hashslot.getCacheAddr(m_cache.m_map.begin()->first).second;
         char cache_ip_new[16];
         int cache_port_new;
-        for (auto kv_self : m_cache.m_map) {
-            string key_self = kv_self.first;
+        // for (auto kv_self : m_cache.m_map) {
+        //     string key_self = kv_self.first;
+        //     strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key_self).first.c_str());
+        //     cache_port_new = m_hashslot_new.getCacheAddr(key_self).second;
+        //     if (strcmp(cache_ip_new, cache_ip_self) != 0 && cache_port_new != cache_port_self) {
+        //         // 新hashsort中key不在本机，连接cache_ip_new对应的cache，再向新cache地址发送SET命令
+        //         CMCData migrating_data;
+        //         migrating_data = MakeCommandData(CommandInfo::SET, key_self, m_cache.get(key_self));
+        //         cout << "will SendCommandData for migrating" << endl;
+        //         CMCData result_data;                                                                      // 访问的结果数据包
+        //         if (SendCommandData(migrating_data, cache_ip_new, cache_port_new, result_data) == false)  // 发送命令数据包给cache
+        //             cout << "sendCommandData for migrating fail." << endl;
+        //         // 检查另外一台主机回复的result_data中是否为SETACK & OK，没问题就删除本地的这个kv
+
+        //         bool del_ret;  // del成功与否的标志
+        //         if (result_data.data_type() == CMCData::ACKINFO) {
+        //             if (result_data.ack_info().ack_type() == AckInfo::SETACK) {
+        //                 if (result_data.ack_info().ack_status() == AckInfo::OK) {
+        //                     std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.deleteKey操作上锁
+        //                     del_ret = m_cache.deleteKey(key_self);                    // 删除k-v键值对
+        //                 }
+        //             }
+        //         }
+        //         if (del_ret == false) {
+        //             cout << "delete local k-v fail." << endl;
+        //             return false;
+        //         }
+        //     }
+        // }
+        auto kv_self = m_cache.m_map.begin();
+        while (kv_self != m_cache.m_map.end()) {
+            string key_self = kv_self->first;
             strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key_self).first.c_str());
             cache_port_new = m_hashslot_new.getCacheAddr(key_self).second;
-            if (strcmp(cache_ip_new, cache_ip_self) != 0 && cache_port_new != cache_port_self) {
+            if (strcmp(cache_ip_new, cache_ip_self) != 0 || cache_port_new != cache_port_self) {
                 // 新hashsort中key不在本机，连接cache_ip_new对应的cache，再向新cache地址发送SET命令
                 CMCData migrating_data;
                 migrating_data = MakeCommandData(CommandInfo::SET, key_self, m_cache.get(key_self));
@@ -504,20 +535,30 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
                 if (result_data.data_type() == CMCData::ACKINFO) {
                     if (result_data.ack_info().ack_type() == AckInfo::SETACK) {
                         if (result_data.ack_info().ack_status() == AckInfo::OK) {
-                            std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.deleteKey操作上锁
-                            del_ret = m_cache.deleteKey(key_self);                    // 删除k-v键值对
+                            std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);    // 为m_cache.deleteKey操作上锁
+                            ++ kv_self;                                                 // 防止k-vd键值对的删除造成迭代器的紊乱
+                            del_ret = m_cache.deleteKey(key_self);                      // 删除k-v键值对
                         }
                     }
-                }
+                } 
                 if (del_ret == false) {
                     cout << "delete local k-v fail." << endl;
                     return false;
                 }
+            } else {
+                ++ kv_self;
             }
         }
     }
 
     cout << "Local cache data migration completed." << endl;
+
+    // 打印本地k-v键值队情况
+    cout << "本地k-v键值对情况：" << endl;
+    for (auto kv_now : m_cache.m_map) {
+        cout << kv_now.first << " = " << kv_now.second << endl;
+        cout << "--------------------------------" << endl;
+    }
 
     // ----------------> code in here <-------------------- //
 
