@@ -15,7 +15,7 @@ extern bool offline_applied;          // 管理员是否申请过下线
 // 下线申请信号(SIGQUIT)回调函数声明，向master发送OFFLINE数据包
 void offlineApply(int signal_num) {
     if (signal_num == SIGQUIT) {
-        cout << "signal_num == SIGQUIT" << endl;
+        std::cout << "signal_num == SIGQUIT" << std::endl;
 
         // 修改offline_apply_flag下线申请标志全局变量为true
         offline_applying = true;
@@ -61,10 +61,16 @@ int main(int argc, char* argv[]) {
     std::cout << "-------------------------------------------" << std::endl;
     // int myport = atoi(argv[1]);  // cache自己的端口号
     int myport;                     // cache自己的端口号
+    std::string myip;
     while (!ntohs(cache_addr.sin_port)) { /* empty body */ }    // wait for the connection to the master to be established
     myport = ntohs(cache_addr.sin_port);
+    myip = inet_ntoa(cache_addr.sin_addr);
     std::cout << "myport = " << myport << std::endl;
+    std::cout << "myip = " << myip << std::endl;
     std::cout << "Cache program started..." << std::endl;
+
+    myServer.registerLocalAddr(cache_addr);     // 注册CacheServer类myServer对象中m_serv_addr的地址信息(ip&port)
+
     if (!myServer.bindAndListen(myport)) {
         std::cout << "listen error !";
         return 0;

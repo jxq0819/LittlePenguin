@@ -28,6 +28,6 @@ class TcpSocket {
 
   private:
     int m_sockfd{-1};
-    struct sockaddr_in serv_addr;  // 客户端的socket表示需要连接的远程服务器地址信息，服务器的socket表示自己的地址信息
+    struct sockaddr_in m_local_addr;  // 客户端的socket表示需要连接的远程服务器地址信息，服务器的socket表示自己的地址信息
     int m_maxWaiter{10};           // 同时与服务器建立连接的上限数
 };

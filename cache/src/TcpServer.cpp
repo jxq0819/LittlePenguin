@@ -4,15 +4,16 @@
 TcpServer::TcpServer(int maxWaiter) {
     // maxWaiter用在：listen(m_sockfd, m_maxWaiter)，用于设置最大监听数量，默认10
     m_tcpSocket = std::make_unique<TcpSocket>(maxWaiter);  // 新建一个TcpSocket对象，返回一个unique_ptr赋值给m_tcpSocket
-    bzero(&serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(1024);  // 1024端口是动态端口的开始，先暂时设置为1024，后续通过bind更改
-    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    bzero(&m_serv_addr, sizeof(m_serv_addr));
+    m_serv_addr.sin_family = AF_INET;
+    m_serv_addr.sin_port = htons(1024);  // 1024端口是动态端口的开始，先暂时设置为1024，后续通过bind更改
+    m_serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    // m_serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     m_listen_sockfd = m_tcpSocket->getSockFD();
     m_epfd = epoll_create1(0);  // Same as epoll_create() but with an FLAGS parameter.
-    
-    m_epoll_is_ready = false;   // 先设置epoll未就绪，等正式epoll了再设为true
+
+    m_epoll_is_ready = false;  // 先设置epoll未就绪，等正式epoll了再设为true
 }
 
 // 服务器端：绑定(bind)地址信息并设置最大监听(listen)个数
@@ -46,7 +47,7 @@ bool TcpServer::startService(int timeout) {
     while (true) {
         int nfds = epoll_wait(m_epfd, m_epollEvents, MAX_EVENTS, timeout);
         if (nfds < 0) {
-            if (errno == EINTR) continue;   // epoll_wait被信号中断会返回-1，且errno为EINTR，此时继续选择监听
+            if (errno == EINTR) continue;  // epoll_wait被信号中断会返回-1，且errno为EINTR，此时继续选择监听
             printf("epoll_wait error!\n");
             return false;
         }
@@ -63,4 +64,10 @@ bool TcpServer::startService(int timeout) {
     }
 
     return true;
+}
+
+// 注册本机所使用的ip地址和port
+void TcpServer::registerLocalAddr(sockaddr_in& myaddr) {
+    this->m_serv_addr.sin_addr.s_addr = myaddr.sin_addr.s_addr;
+    this->m_serv_addr.sin_port = myaddr.sin_port;
 }

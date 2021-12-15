@@ -38,10 +38,10 @@ bool TcpSocket::bindPort(int _port) {
     int opt = 1;
     setsockopt(m_sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(_port);
-    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(m_sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    m_local_addr.sin_family = AF_INET;
+    m_local_addr.sin_port = htons(_port);
+    m_local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(m_sockfd, (struct sockaddr *)&m_local_addr, sizeof(m_local_addr)) < 0) {
         return false;
     }
     return true;
@@ -49,21 +49,21 @@ bool TcpSocket::bindPort(int _port) {
 
 bool TcpSocket::setServerInfo(const std::string &ip, int _port) {
     auto IP = ip.data();
-    bzero(&serv_addr, sizeof(serv_addr));
-    if (inet_pton(AF_INET, IP, &serv_addr.sin_addr.s_addr) < 0) {
+    bzero(&m_local_addr, sizeof(m_local_addr));
+    if (inet_pton(AF_INET, IP, &m_local_addr.sin_addr.s_addr) < 0) {
         return false;
     }
     if (_port < MIN_PORT || MAX_PORT > 65535) {
         return false;
     }
-    serv_addr.sin_port = htons(_port);
-    serv_addr.sin_family = AF_INET;
+    m_local_addr.sin_port = htons(_port);
+    m_local_addr.sin_family = AF_INET;
 
     return true;
 }
 
 bool TcpSocket::connectToHost() {
-    if (connect(m_sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    if (connect(m_sockfd, (struct sockaddr *)&m_local_addr, sizeof(m_local_addr)) < 0) {
         return false;
     }
     return true;
@@ -77,6 +77,6 @@ bool TcpSocket::listenOn() {
 }
 
 unsigned int TcpSocket::getPort() const {
-    auto port = serv_addr.sin_port;
+    auto port = m_local_addr.sin_port;
     return static_cast<unsigned int>(port);
 }

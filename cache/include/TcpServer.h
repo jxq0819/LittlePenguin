@@ -34,8 +34,11 @@ class TcpServer {
     // 在这里进入事件的主循环，可以自行设置时间，默认为epoll_wait堵塞等待事件发生
     bool startService(int timeout = -1);
 
+    // 注册本机所使用的ip地址和port
+    void registerLocalAddr(sockaddr_in& myaddr);
+
   protected:
-    struct sockaddr_in serv_addr;            // 服务器信息
+    struct sockaddr_in m_serv_addr;            // 服务器信息
     std::unique_ptr<TcpSocket> m_tcpSocket;  // unique_ptr智能指针，指向一个TcpSocket对象
 
     epoll_event m_epollEvents[MAX_EVENTS];  // epoll事件队列

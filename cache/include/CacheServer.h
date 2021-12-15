@@ -20,7 +20,6 @@
 #include "command_cache.h"
 #include "global_extern.h"
 
-using namespace std;
 
 extern bool offline_applying;  // 是否为发送下线申请中
 extern bool offline_applied;  // 是否申请过下线

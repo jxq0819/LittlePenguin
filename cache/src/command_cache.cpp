@@ -3,7 +3,7 @@
 #include "command_cache.h"
 
 /*----------------------------------- 生成命令数据 -----------------------------------*/
-CMCData MakeCommandData(const ::CommandInfo_CmdType cmd_type, const string& param1, const string& param2) {
+CMCData MakeCommandData(const ::CommandInfo_CmdType cmd_type, const std::string& param1, const std::string& param2) {
     // 新建CommandInfo命令类
     CommandInfo cmd_info;
     // 新建数据类（发送给目的主机的数据）
@@ -29,20 +29,20 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
     bzero(send_buff, BUFSIZ);
 
     // 打印待发送的CMCData信息
-    string debug_str = send_data.DebugString();
-    cout << debug_str << endl;
+    std::string debug_str = send_data.DebugString();
+    std::cout << debug_str << std::endl;
 
     int data_size = send_data.ByteSizeLong();
-    cout << "data_size: " << data_size << endl;
+    std::cout << "data_size: " << data_size << std::endl;
     send_data.SerializeToArray(send_buff, data_size);
-    cout << "after SerializeToArray: " << strlen(send_buff) << endl;
+    std::cout << "after SerializeToArray: " << strlen(send_buff) << std::endl;
 
     if (dst_ip == "" || dst_port == 0) {
-        cout << "ip or port is null" << endl;
+        std::cout << "ip or port is null" << std::endl;
         return false;
     }
     if (dst_port <= 1024 || dst_port >= 65535) {
-        cout << "invalid port." << endl;
+        std::cout << "invalid port." << std::endl;
         return false;
     }
     struct sockaddr_in cache_addr;
@@ -67,11 +67,11 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
         close(sockfd_to_cache);
         return false;
     }
-    cout << "connect cache server success!" << endl;
+    std::cout << "connect cache server success!" << std::endl;
 
     // 向cache端发送数据
     int send_size = send(sockfd_to_cache, send_buff, data_size, 0);
-    cout << "client_send_size: " << send_size << endl;
+    std::cout << "client_send_size: " << send_size << std::endl;
     if (send_size < 0) {
         std::cout << "GET Command sending failed!" << std::endl;
         return false;
@@ -92,8 +92,8 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
 
         // 关闭此次查询TCP连接服务
         close(sockfd_to_cache);  //当完成一次cache访问，就关闭与cache连接的套接字
-        cout << "close(sockfd_to_cache);" << endl;
-        cout << "--------------------------------------------------------" << endl;
+        std::cout << "close(sockfd_to_cache);" << std::endl;
+        std::cout << "--------------------------------------------------------" << std::endl;
         return true;
     }
 }
