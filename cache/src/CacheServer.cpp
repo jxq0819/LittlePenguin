@@ -3,7 +3,7 @@
 // CacheServer构造函数，设置客户端最大连接个数, LRU链表容量
 CacheServer::CacheServer(int maxWaiter) : TcpServer(maxWaiter) {
     // 线程池预先开启8个线程
-    threadPool = std::make_unique<ThreadPool>(10);
+    threadPool = std::make_unique<ThreadPool>(1000);
     //
     m_is_migrating = false;  // 默认没有正在进行数据迁移
 
@@ -40,18 +40,19 @@ void CacheServer::newConnection() {
 void CacheServer::existConnection(int event_i) {
     std::cout << "-------------------------------------------" << std::endl;
     std::cout << "deal existed connection" << std::endl;
-    // 处理已经存在客户端的请求在子线程处理
-    threadPool->enqueue([this, event_i]() {  // lambda统一处理即可
-        epoll_event ep_ev = this->m_epollEvents[event_i];
-        if (ep_ev.events & EPOLLRDHUP) {
-            // 有客户端事件发生，但缓冲区没数据可读，说明主动断开连接，于是将其从epoll树上摘除
-            std::lock_guard<std::mutex> lock_g(this->m_epoll_ctl_mutex);  // 为epoll_ctl操作上锁
-            int epoll_ctl_ret = epoll_ctl(m_epfd, EPOLL_CTL_DEL, ep_ev.data.fd, NULL);
-            if (epoll_ctl_ret < 0) {
-                throw std::runtime_error("delete client error\n");
-            }
-            std::cout << "a client left" << std::endl;
-        } else if (ep_ev.events & EPOLLIN) {
+    epoll_event ep_ev = this->m_epollEvents[event_i];
+    if (ep_ev.events & EPOLLRDHUP) {
+        // 有客户端事件发生，但缓冲区没数据可读，说明主动断开连接，于是将其从epoll树上摘除
+        int epoll_ctl_ret = epoll_ctl(m_epfd, EPOLL_CTL_DEL, ep_ev.data.fd, NULL);
+        if (epoll_ctl_ret < 0) {
+            throw std::runtime_error("delete client error\n");
+        }
+        close(ep_ev.data.fd);
+        std::cout << "a client left" << std::endl;
+    } else if (ep_ev.events & EPOLLIN) {
+        // 处理已经存在客户端的请求在子线程处理
+        threadPool->enqueue([this, ep_ev]() {  // lambda统一处理即可
+            // if (ep_ev.events & EPOLLIN) {
             // 如果与客户端连接的该套接字的输入缓存中有收到数据，则读数据
             char recv_buf_max[MAX_BUF_SIZE];
             memset(recv_buf_max, 0, sizeof(recv_buf_max));
@@ -77,12 +78,11 @@ void CacheServer::existConnection(int event_i) {
                             if (offline_applied == true) {
                                 std::cout << "cache offline successful!" << std::endl;
                                 close(ep_ev.data.fd);  // close fd before exit
-                                exit(1);
+                                exit(0);
                             }
                         }
                     }
                 }
-
                 // 解析数据包，并生成回复数据包
                 CMCData resp_data;                                     // 先定义一个回复数据包，作为parseData传入传出参数
                 bool parse_ret = parseData(recv_cmc_data, resp_data);  // 在parseData中会完成数据包的解析，并将响应数据注册进resp_data中
@@ -94,11 +94,12 @@ void CacheServer::existConnection(int event_i) {
                 // 接下来要把响应数据包序列化后再传回客户端
                 std::string resp_data_str = resp_data.DebugString();
                 std::cout << "resp_data: \n"
-                          << resp_data_str << std::endl;
+                        << resp_data_str << std::endl;
 
                 int resp_data_size = resp_data.ByteSizeLong();
                 std::cout << "data_size: " << resp_data_size << std::endl;
                 char send_buf_max[MAX_BUF_SIZE];
+                bzero(send_buf_max, sizeof(send_buf_max));  // 少了这句
                 resp_data.SerializeToArray(send_buf_max, resp_data_size);
                 std::cout << "after SerializeToArray: " << strlen(send_buf_max) << std::endl;
 
@@ -109,12 +110,12 @@ void CacheServer::existConnection(int event_i) {
                     std::cout << "error on send()\n";
                     return;
                 }
-            }
-        } else {  // 未知错误
-            std::cout << "unknown error\n";
-            return;
-        }
-    });
+            }  
+        });
+    } else {  // 未知错误
+        std::cout << "unknown error\n";
+        return;
+    }
 }
 
 // 解析数据包，传入recv_data进行分析，然后修改response_data回复数据包
@@ -490,6 +491,9 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
     }
 
     // 主要思路就是：
+
+    // 先检查新槽是否是空槽
+
     // 1、遍历LRU链表的k-v键值对，根据key在hashslot_new查一下该键值对最新的分布情况（cache地址）
     // 类似于这样查询：
     // char cache_ip_new[16];         // 新cache主机ip
@@ -512,50 +516,52 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
         char cache_ip_new[16];
         int cache_port_new;
 
-        auto kv_self = m_cache.m_map.begin();
-        while (kv_self != m_cache.m_map.end()) {
-            std::string key_self = kv_self->first;
-            strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key_self).first.c_str());
-            cache_port_new = m_hashslot_new.getCacheAddr(key_self).second;
-            if (strcmp(cache_ip_new, cache_ip_self) != 0 || cache_port_new != cache_port_self) {
-                // 新hashsort中key不在本机，连接cache_ip_new对应的cache，再向新cache地址发送SET命令
-                CMCData migrating_data;
-                migrating_data = MakeCommandData(CommandInfo::SET, key_self, m_cache.get(key_self));
-                std::cout << "will SendCommandData for migrating" << std::endl;
-                CMCData result_data;                                                                      // 访问的结果数据包
-                if (SendCommandData(migrating_data, cache_ip_new, cache_port_new, result_data) == false)  // 发送命令数据包给cache
-                    std::cout << "sendCommandData for migrating fail." << std::endl;
-                // 检查另外一台主机回复的result_data中是否为SETACK & OK，没问题就删除本地的这个kv
+        if (m_hashslot_new.numNodes() != 0) {
+            auto kv_self = m_cache.m_map.begin();
+            while (kv_self != m_cache.m_map.end()) {
+                std::string key_self = kv_self->first;
+                strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key_self).first.c_str());
+                cache_port_new = m_hashslot_new.getCacheAddr(key_self).second;
+                if (strcmp(cache_ip_new, cache_ip_self) != 0 || cache_port_new != cache_port_self) {
+                    // 新hashsort中key不在本机，连接cache_ip_new对应的cache，再向新cache地址发送SET命令
+                    CMCData migrating_data;
+                    migrating_data = MakeCommandData(CommandInfo::SET, key_self, m_cache.get(key_self));
+                    std::cout << "will SendCommandData for migrating" << std::endl;
+                    CMCData result_data;                                                                      // 访问的结果数据包
+                    if (SendCommandData(migrating_data, cache_ip_new, cache_port_new, result_data) == false)  // 发送命令数据包给cache
+                        std::cout << "sendCommandData for migrating fail." << std::endl;
+                    // 检查另外一台主机回复的result_data中是否为SETACK & OK，没问题就删除本地的这个kv
 
-                bool del_ret;  // del成功与否的标志
-                if (result_data.data_type() == CMCData::ACKINFO) {
-                    if (result_data.ack_info().ack_type() == AckInfo::SETACK) {
-                        if (result_data.ack_info().ack_status() == AckInfo::OK) {
-                            std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.deleteKey操作上锁
-                            ++kv_self;                                                // 防止k-vd键值对的删除造成迭代器的紊乱
-                            del_ret = m_cache.deleteKey(key_self);                    // 删除k-v键值对
+                    bool del_ret;  // del成功与否的标志
+                    if (result_data.data_type() == CMCData::ACKINFO) {
+                        if (result_data.ack_info().ack_type() == AckInfo::SETACK) {
+                            if (result_data.ack_info().ack_status() == AckInfo::OK) {
+                                std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.deleteKey操作上锁
+                                ++kv_self;                                                // 防止k-vd键值对的删除造成迭代器的紊乱
+                                del_ret = m_cache.deleteKey(key_self);                    // 删除k-v键值对
+                            }
                         }
                     }
+                    if (del_ret == false) {
+                        std::cout << "delete local k-v fail." << std::endl;
+                        return false;
+                    }
+                } else {
+                    ++kv_self;
                 }
-                if (del_ret == false) {
-                    std::cout << "delete local k-v fail." << std::endl;
-                    return false;
-                }
-            } else {
-                ++kv_self;
             }
+            // 打印本地k-v键值队情况
+            std::cout << "local k-v:" << std::endl;
+            for (auto kv_now : m_cache.m_map) {
+                std::cout << kv_now.first << " = " << kv_now.second << std::endl;
+                std::cout << "--------------------------------" << std::endl;
+            }
+            std::cout << "Local cache data migration completed." << std::endl;
+        } else {
+            // shutting down this last cache server will lost all cached data
+            std::cout << "Shutting down the last cache server!" << std::endl;
         }
     }
-
-    std::cout << "Local cache data migration completed." << std::endl;
-
-    // 打印本地k-v键值队情况
-    std::cout << "local k-v:" << std::endl;
-    for (auto kv_now : m_cache.m_map) {
-        std::cout << kv_now.first << " = " << kv_now.second << std::endl;
-        std::cout << "--------------------------------" << std::endl;
-    }
-
     // ----------------> code in here <-------------------- //
 
     this->m_is_migrating = false;

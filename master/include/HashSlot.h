@@ -28,7 +28,7 @@ public:
     void restoreFrom(const HashSlotInfo&);  // restore hashslot from a HashSlotInfo
 
     void printCacheNode(std::ostream& os, int i) const { os << slots_[i]->name(); } 
-    std::pair<std::string, int> getCacheAddr(const std::string key);
+    std::pair<std::string, int> getCacheAddr(const std::string key) const;
 private:
     int num_nodes_ = 0;                     // num of nodes in use
     std::list<CacheNode> node_list_;        // list of all nodes in use

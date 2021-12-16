@@ -68,6 +68,6 @@ bool TcpServer::startService(int timeout) {
 
 // 注册本机所使用的ip地址和port
 void TcpServer::registerLocalAddr(sockaddr_in& myaddr) {
-    this->m_serv_addr.sin_addr.s_addr = myaddr.sin_addr.s_addr;
-    this->m_serv_addr.sin_port = myaddr.sin_port;
+    m_serv_addr.sin_addr.s_addr = myaddr.sin_addr.s_addr;
+    m_serv_addr.sin_port = myaddr.sin_port;
 }

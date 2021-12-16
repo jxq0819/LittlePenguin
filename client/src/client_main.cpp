@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,20 +12,35 @@
 #include <unistd.h>
 
 #include <ctime>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
-
-using namespace std;
+#include <atomic>
 
 #include "HashSlot.h"
 #include "cmcdata.pb.h"
 #include "command.h"
 
-#define MAX_BUF_SIZE 212992
+#define MAX_BUF_SIZE 102400
 #define BUF_SIZE 2048
+#define KV_LEN 64
+
+std::atomic<bool> test_stop(false);
+static HashSlot hashslot;
+std::mutex hashslot_mutex;
+
+void generateRandomKeyValuePairs(std::vector<std::pair<std::string, std::string>> &kv_vec);
+void startTest(int batch_size);
+void stopTest(int signal_num) {
+    if (signal_num == SIGQUIT) {
+        std::cout << "Test Aborted" << std::endl;
+        // 修改offline_apply_flag下线申请标志全局变量为true
+        test_stop = true;
+    }
+}
 
 int main(int argc, char* argv[]) {
     if (argc <= 2) {
@@ -35,8 +51,7 @@ int main(int argc, char* argv[]) {
     /* ---------------------全局变量区--------------------- */
     char cache_ip[16];         // 目的主机ip
     u_int16_t cache_port = 0;  // 目的主机port
-    HashSlot local_hashslot;         // 本地哈希槽对象
-    // char read_buf[BUFSIZ];            //普通大小的缓存
+    // HashSlot hashslot;         // 本地哈希槽对象
     char recv_buf_max[MAX_BUF_SIZE];  // 为了接受类似于hashslot型的大字节数据，保险起见就开了这么大的空间
     char send_buf_max[BUF_SIZE];
 
@@ -76,15 +91,15 @@ int main(int argc, char* argv[]) {
         close(socketfd_to_master);
         return -1;
     }
-    cout << "connect master server success!" << endl;
-    cout << "enter [Q]/[q] to quit." << endl;
+    std::cout << "connect master server success!" << std::endl;
+    std::cout << "enter [QUIT]/[quit] to quit." << std::endl;
 
     /* --------------- 和master连接成功的第一件事就是拉取哈希槽信息（GETSLOT） --------------- */
-    if (get_slot(socketfd_to_master, local_hashslot) == false) {
-        cout << "get_slot() fail." << endl;
+    if (get_slot(socketfd_to_master, hashslot) == false) {
+        std::cout << "get_slot() fail." << std::endl;
         return -1;
     } else {
-        cout << "get_slot() successful." << endl;
+        std::cout << "get_slot() successful." << std::endl;
     }
 
     /* --------------- 绑定本机地址并监听master的请求连接 --------------- */
@@ -93,15 +108,6 @@ int main(int argc, char* argv[]) {
 
     // 设置本地端口复用，这样master才能主动联系上client
     setsockopt(client_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    // int on = 1;
-    // int rc = ioctl(client_listen_sock, FIONBIO, (char *)&on);
-    // if (rc < 0)
-    // {
-    //     perror("ioctl() failed");
-    //     close(client_listen_sock);
-    //     exit(-1);
-    // }
 
     // 本机client地址信息
     sockaddr_in client_addr;
@@ -121,6 +127,13 @@ int main(int argc, char* argv[]) {
         perror("listen error");
         return -1;
     }
+
+    /* ----------注册SIGQUIT信号，管理员按（Ctrl + \）发送一个SIGQUIT信号，并向master申请下线----------- */
+    struct sigaction stop_test_act;
+    stop_test_act.sa_handler = stopTest;  // 注册回调函数
+    sigemptyset(&stop_test_act.sa_mask);
+    stop_test_act.sa_flags = 0;
+    sigaction(SIGQUIT, &stop_test_act, 0);  // 当收到进程收到系统发来的SIGQUIT信号后，调用stopTest处理
 
     /* --------------- poll I/O复用监测不同事件的发生 --------------- */
     pollfd fd_array[4];  //监听事件数组
@@ -145,12 +158,12 @@ int main(int argc, char* argv[]) {
     while (1) {
         int ret = poll(fd_array, 4, -1);  // 这里阻塞等待事件发生
         if (ret < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             perror("poll() error\n");
             return -1;
         }
-
-        // if (ret)
-        //     std::cout << ret << std::endl;
 
         // 发生对端（服务端）断开关闭事件，清空读缓冲数据
         if (fd_array[1].revents & POLLRDHUP) {
@@ -168,13 +181,14 @@ int main(int argc, char* argv[]) {
             recv_data.ParseFromArray(recv_buf_max, recv_size);
             //
             string recv_info_str = recv_data.DebugString();
-            cout << recv_info_str << endl;
+            std::cout << recv_info_str << std::endl;
             switch (recv_data.data_type()) {
                 // 如果真的是哈希槽信息包，那就更新哈希槽
                 case CMCData::HASHSLOTINFO:
-
-                    local_hashslot.restoreFrom(recv_data.hs_info());
-
+                    {
+                        std::lock_guard<std::mutex> lock(hashslot_mutex);
+                        hashslot.restoreFrom(recv_data.hs_info());
+                    }
                     break;
                 default:
                     break;
@@ -203,30 +217,33 @@ int main(int argc, char* argv[]) {
         }
         // master发数据过来了
         if ((fd_array[3].revents & POLLIN)) {
-            cout << "fd_array[3].revents & POLLIN" << endl;
+            std::cout << "fd_array[3].revents & POLLIN" << std::endl;
             // 接受数据
             bzero(recv_buf_max, sizeof(recv_buf_max));
             int recv_size = recv(fd_array[3].fd, recv_buf_max, sizeof(recv_buf_max), 0);
             CMCData recv_data;
             recv_data.ParseFromArray(recv_buf_max, recv_size);
-            cout << recv_data.DebugString() << endl;
-            cout << "DebugString() end" << endl; 
+            std::cout << recv_data.DebugString() << std::endl;
+            std::cout << "DebugString() end" << std::endl; 
             CMCData send_data;
             AckInfo ack_info;
 
             if (recv_data.data_type() == CMCData::HASHSLOTINFO) {
                 if (recv_data.hs_info().hashinfo_type() == HashSlotInfo::ALLCACHEINFO) {
-                    local_hashslot.restoreFrom(recv_data.hs_info());
+                    std::lock_guard<std::mutex> lock(hashslot_mutex);
+                    hashslot.restoreFrom(recv_data.hs_info());
                 }
                 if (recv_data.hs_info().hashinfo_type() == HashSlotInfo::ADDCACHE) {
                     string add_node_ip = recv_data.hs_info().cache_node().ip();
                     int add_node_port = recv_data.hs_info().cache_node().port();
-                    local_hashslot.addCacheNode(CacheNode(add_node_ip, add_node_port));
+                    std::lock_guard<std::mutex> lock(hashslot_mutex);
+                    hashslot.addCacheNode(CacheNode(add_node_ip, add_node_port));
                 }
                 if (recv_data.hs_info().hashinfo_type() == HashSlotInfo::REMCACHE) {
                     string rem_node_ip = recv_data.hs_info().cache_node().ip();
                     int rem_node_port = recv_data.hs_info().cache_node().port();
-                    local_hashslot.remCacheNode(CacheNode(rem_node_ip, rem_node_port));
+                    std::lock_guard<std::mutex> lock(hashslot_mutex);
+                    hashslot.remCacheNode(CacheNode(rem_node_ip, rem_node_port));
                 }
                 printf("the local hashslot has updated\n");
 
@@ -249,14 +266,14 @@ int main(int argc, char* argv[]) {
         /* -------------------- 发生本机标准输入事件 -------------------- */
         if (fd_array[0].revents & POLLIN) {
             std::string client_input_str;  // 客户端命令
-            getline(std::cin, client_input_str);
-            istringstream istr(client_input_str);
+            std::getline(std::cin, client_input_str);
+            std::istringstream istr(client_input_str);
             string word;
-            vector<string> word_v;
+            std::vector<std::string> word_v;
             while (istr >> word) {
                 word_v.push_back(word);
             }
-            string command, param_1, param_2;
+            std::string command, param_1, param_2;
             int param_count = word_v.size();
             switch (param_count) {
                 case 0:
@@ -277,44 +294,152 @@ int main(int argc, char* argv[]) {
                     break;
                 }
                 default: {
-                    cout << "too many arguments!" << endl;
+                    std::cout << "too many arguments!" << std::endl;
                     continue;
                 }
             }
-            cout << "Command: " << command << endl;
-            cout << "Param1: " << param_1 << endl;
-            cout << "Param2: " << param_2 << endl;
+            for (auto &c : command) {
+                c = toupper(c);
+            }
+            std::cout << "Command: " << command << " " << param_1 << " " << param_2 << std::endl;
 
             /* ------------- 执行命令 ------------- */
             CMCData my_cmc_data;
-            if ((command == "QUIT" || command == "quit") && param_count == 1) {
-                cout << "The client has been close!" << endl;
+            if (command == "QUIT" && param_count == 1) {
+                std::cout << "The client has been close!" <<std::endl;
                 break;  // break while(1), close(socketfd_to_master), return 0;
-            } else if ((command == "GET" || command == "get") && param_count == 2) {
+            } else if (command == "GET" && param_count == 2) {
                 my_cmc_data = MakeCommandData(CommandInfo::GET, param_1, "");
-            } else if ((command == "SET" || command == "set") && param_count == 3) {
+            } else if (command == "SET" && param_count == 3) {
                 my_cmc_data = MakeCommandData(CommandInfo::SET, param_1, param_2);
-            } else if ((command == "DEL" || command == "del") && param_count == 2) {
+            } else if (command == "DEL" && param_count == 2) {
                 my_cmc_data = MakeCommandData(CommandInfo::DEL, param_1, "");
+            } else if (command == "TEST" && param_count == 1) {
+                // sprawn a child process to do the test
+                test_stop = false;
+                std::thread test(startTest, 100);
+                test.detach();
+                continue;   // ignore the following 
             } else {
+                std::cout << "Invalid Command!" << std::endl;
                 continue;
             }
-            strcpy(cache_ip, local_hashslot.getCacheAddr(param_1).first.c_str());  // 从local_hashslot中查询cache地址
-            cache_port = local_hashslot.getCacheAddr(param_1).second;
-            cout << "will SendCommandData" << endl;
+            {
+                std::lock_guard<std::mutex> lock(hashslot_mutex);
+                strcpy(cache_ip, hashslot.getCacheAddr(param_1).first.c_str());  // 从hashslot中查询cache地址
+                cache_port = hashslot.getCacheAddr(param_1).second;
+            }
+            std::cout << "will SendCommandData" << std::endl;
             CMCData result_data;                                                           // 访问的结果数据包
             if (SendCommandData(my_cmc_data, cache_ip, cache_port, result_data) == false)  // 发送命令数据包给cache
-                cout << "sendCommandData fail." << endl;
+                std::cout << "sendCommandData fail." << std::endl;
 
             // 上面结果数据包result_data收到相关信息后，这里是需要以用户的视角把结果打印到屏幕的
             // 解析数据（主要是查看有没有想要查询的结果），并打印结果
             /* ------------- TODO ------------ */
             // 此处先把数据包信息打印出来
             string debug_str = result_data.DebugString();
-            cout << debug_str << endl;
-            cout << "DebugString() end!" << endl;
+            std::cout << debug_str << std::endl;
+            std::cout << "DebugString() end!" << std::endl;
         }
     }
     close(socketfd_to_master);  // 关闭客户端套接字，客户端退出
     return 0;
+}
+
+void generateRandomKeyValuePairs(std::vector<std::pair<std::string, std::string>> &kv_vec)
+{
+    std::string k_temp, v_temp;
+    std::srand(std::time(0));
+    for (auto &elem : kv_vec) {
+        for (int i = 0; i < KV_LEN; ++i) {
+            switch (std::rand() % 3) {
+                case 1:
+                    k_temp.push_back('A' + std::rand() % 26);
+                    v_temp.push_back('A' + std::rand() % 26);
+                    break;
+                case 2:
+                    k_temp.push_back('a' + std::rand() % 26);
+                    v_temp.push_back('a' + std::rand() % 26);
+                    break;
+                default:
+                    k_temp.push_back('0' + std::rand() % 10);
+                    v_temp.push_back('0' + std::rand() % 10);
+                    break;
+            }
+        }
+        elem = {k_temp, v_temp};
+        k_temp.clear();
+        v_temp.clear();
+    }
+}
+
+void startTest(int batch_size)
+{
+    std::vector<std::pair<std::string, std::string>> kv_vec(batch_size);
+    while (1) {
+        generateRandomKeyValuePairs(kv_vec);
+        CMCData send_cmc_data, recv_cmc_data;
+        char cache_ip[INET_ADDRSTRLEN];
+        uint32_t cache_port;
+        int match_count = 0; 
+        for (const auto &kv : kv_vec) {
+            std::pair<std::string, int> cache_addr;
+            {
+                std::lock_guard<std::mutex> lock(hashslot_mutex);
+                if (hashslot.numNodes() == 0) {
+                    std::cout << "empty hashslot" << endl;
+                    test_stop = true;
+                    break;
+                }
+                cache_addr = hashslot.getCacheAddr(kv.first); std::cout << cache_addr.first << ":" << cache_addr.second;
+            }
+            bzero(cache_ip, INET_ADDRSTRLEN);
+            strcpy(cache_ip, cache_addr.first.c_str());  // 从local_hashslot中查询cache地址
+            cache_port = cache_addr.second;
+            send_cmc_data = MakeCommandData(CommandInfo::SET, kv.first, kv.second);
+            if (SendCommandData(send_cmc_data, cache_ip, cache_port, recv_cmc_data) == false) {
+                std::cout << "SendCommandData failed." << std::endl;
+            } else {
+                std::cout << recv_cmc_data.ack_info().ack_status() << std::endl;
+            }
+            send_cmc_data.Clear();
+            recv_cmc_data.Clear();
+        }
+        if (test_stop) {
+            break;
+        }
+        for (const auto &kv : kv_vec) {
+            std::pair<std::string, int> cache_addr;
+            {
+                std::lock_guard<std::mutex> lock(hashslot_mutex);
+                if (hashslot.numNodes() == 0) {
+                    std::cout << "empty hashslot" << endl;
+                    test_stop = true;
+                    break;
+                }
+                cache_addr = hashslot.getCacheAddr(kv.first);
+            }
+            bzero(cache_ip, INET_ADDRSTRLEN);
+            strcpy(cache_ip, cache_addr.first.c_str());  // 从hashslot中查询cache地址
+            cache_port = cache_addr.second;
+            send_cmc_data = MakeCommandData(CommandInfo::GET, kv.first, "");
+            if (SendCommandData(send_cmc_data, cache_ip, cache_port, recv_cmc_data) == false) {
+                std::cout << "SendCommandData failed." << std::endl;
+            } else {
+                std::cout << recv_cmc_data.kv_data().value() << std::endl;
+                if (recv_cmc_data.kv_data().value() == kv.second) {
+                    ++match_count;
+                }
+            }
+            send_cmc_data.Clear();
+            recv_cmc_data.Clear();
+        }
+        std::cout << "Cache hit " << match_count << " out of " << batch_size << std::endl;
+        // sleep(1);
+        if (test_stop) {
+            break;
+        }
+    }
+    return;
 }

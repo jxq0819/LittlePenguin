@@ -60,6 +60,9 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
         return false;
     }
 
+    int val = 1;
+    int ret = setsockopt(sockfd_to_cache, SOL_SOCKET,SO_REUSEADDR, &val, sizeof(int));
+
     // 阻塞连接cache
     if (connect(sockfd_to_cache, (struct sockaddr*)&cache_addr, sizeof(sockaddr_in)) < 0) {
         perror("connect() error\n");
@@ -77,14 +80,15 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
     }
 
     // 读取对端的回复消息
-
+    std::cout << "RECEIVING DATA!!!" << std::endl;
     char recv_buf_max[BUFSIZ];
-    memset(recv_buf_max, 0, sizeof(recv_buf_max));
+    bzero(recv_buf_max, sizeof(recv_buf_max));
     int recv_size = recv(sockfd_to_cache, recv_buf_max, BUFSIZ, 0);
     std::cout << "received: " << recv_size << " Bytes" << std::endl;
 
     if (recv_size <= 0) {
-        throw std::runtime_error("recv() error \n");
+        // throw std::runtime_error("recv() error \n");
+        std::cout << "Missed, the cache server is shutting down." << std::endl;
     } else {
         // 传出回复数据包，写入信息
         recv_data.ParseFromArray(recv_buf_max, sizeof(recv_buf_max));

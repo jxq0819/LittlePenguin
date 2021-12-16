@@ -16,7 +16,6 @@ extern bool offline_applied;          // 管理员是否申请过下线
 void offlineApply(int signal_num) {
     if (signal_num == SIGQUIT) {
         std::cout << "signal_num == SIGQUIT" << std::endl;
-
         // 修改offline_apply_flag下线申请标志全局变量为true
         offline_applying = true;
         offline_applied = true;     // 置为true说明曾经确实申请过下线，后续此变量状态不会变动

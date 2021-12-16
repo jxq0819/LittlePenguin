@@ -157,7 +157,7 @@ void HashSlot::restoreFrom(const HashSlotInfo &hash_slot_info)
     }
 }
 
-std::pair<std::string, int> HashSlot::getCacheAddr(const std::string key) {
+std::pair<std::string, int> HashSlot::getCacheAddr(const std::string key) const{
     char key_c_str[BUFSIZ];
     strcpy(key_c_str, key.c_str());
     uint16_t slot_index = crc16(key_c_str, strlen(key_c_str)) % 16384;

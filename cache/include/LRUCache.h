@@ -29,8 +29,8 @@ private:
 	void removeNode(DListNode* node);
 	void addToHead(DListNode* node);
 public:
-	// LRU链表默认容量为10，并声明为explicit表明该构造函数是显式的，防止隐式转换
-	explicit LRUCache(int capacity = 10);
+	// LRU链表默认容量为100，并声明为explicit表明该构造函数是显式的，防止隐式转换
+	explicit LRUCache(int capacity = 100);
 	~LRUCache();
 	std::string get(const std::string& key);
 	bool set(const std::string& key, const std::string& value);
