@@ -317,7 +317,7 @@ int main(int argc, char* argv[]) {
             } else if (command == "TEST" && param_count == 1) {
                 // sprawn a child process to do the test
                 test_stop = false;
-                std::thread test(startTest, 100);
+                std::thread test(startTest, 100);       // 输入test开始循环测试，每次生成100个随机key，分别SET/GET，打印GET结果正确的次数，间隔1秒重复，Ctrl+\ 终止测试
                 test.detach();
                 continue;   // ignore the following 
             } else {
@@ -374,6 +374,7 @@ void generateRandomKeyValuePairs(std::vector<std::pair<std::string, std::string>
     }
 }
 
+// 间隔1秒，每次随机生成batch_size个key和value，先后进行设置和查询，打印查询正确的次数/总次数
 void startTest(int batch_size)
 {
     std::vector<std::pair<std::string, std::string>> kv_vec(batch_size);
@@ -436,7 +437,7 @@ void startTest(int batch_size)
             recv_cmc_data.Clear();
         }
         std::cout << "Cache hit " << match_count << " out of " << batch_size << std::endl;
-        // sleep(1);
+        sleep(1);
         if (test_stop) {
             break;
         }
