@@ -3,7 +3,7 @@
 // CacheServer构造函数，设置客户端最大连接个数, LRU链表容量
 CacheServer::CacheServer(int maxWaiter) : TcpServer(maxWaiter) {
     // 线程池预先开启8个线程
-    threadPool = std::make_unique<ThreadPool>(1000);
+    threadPool = std::make_unique<ThreadPool>(100);
     //
     m_is_migrating = false;  // 默认没有正在进行数据迁移
 
@@ -14,26 +14,29 @@ void CacheServer::newConnection() {
     std::cout << "-------------------------------------------" << std::endl;
     std::cout << "deal new connection" << std::endl;
     // 建立新连接在主线程
-    int connfd = accept(m_listen_sockfd, NULL, NULL);  // 获取与客户端相连的fd，但不保存客户端地址信息
-    if (connfd < 0) {
-        // throw std::runtime_error("accept new connection error\n");
-        std::cout << "accept new connection error\n";
-    }
+    while (1) {
+        int connfd = accept(m_listen_sockfd, NULL, NULL);  // 获取与客户端相连的fd，但不保存客户端地址信息
+        if (connfd < 0) {
+            // throw std::runtime_error("accept new connection error\n");
+            std::cout << "accept new connection error\n";
+            break;
+        }
 
-    std::cout << "a new client come\n";
+        std::cout << "a new client come, fd = " << connfd << std::endl;
 
-    // 注册与这个客户端有关的事件
-    epoll_event ev;
-    bzero(&ev, sizeof(ev));
-    ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-    // ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLONESHOT;
-    ev.data.fd = connfd;
-    if (epoll_ctl(m_epfd, EPOLL_CTL_ADD, connfd, &ev) < 0) {
-        // throw std::runtime_error("register event error\n");
-        std::cout << "register event error\n";
-        return;
+        // 注册与这个客户端有关的事件
+        epoll_event ev;
+        bzero(&ev, sizeof(ev));
+        ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
+        // ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLONESHOT;
+        ev.data.fd = connfd;
+        if (epoll_ctl(m_epfd, EPOLL_CTL_ADD, connfd, &ev) < 0) {
+            // throw std::runtime_error("register event error\n");
+            std::cout << "register event error\n";
+            return;
+        }
+        setnonblocking(connfd);  // 设置与对端连接的socket文件描述符为非堵塞模式
     }
-    setnonblocking(connfd);  // 设置与对端连接的socket文件描述符为非堵塞模式
 }
 
 // 发生现有连接事件，说明对端有传递“信息”过来，虽然有可能是空消息
@@ -48,14 +51,14 @@ void CacheServer::existConnection(int event_i) {
             throw std::runtime_error("delete client error\n");
         }
         close(ep_ev.data.fd);
-        std::cout << "a client left" << std::endl;
+        std::cout << "a client left, fd = " << ep_ev.data.fd << std::endl;
     } else if (ep_ev.events & EPOLLIN) {
         // 处理现有连接的输入事件则在子线程处理
         threadPool->enqueue([this, ep_ev]() {  // lambda统一处理即可
             // if (ep_ev.events & EPOLLIN) {
             // 如果与客户端连接的该套接字的输入缓存中有收到数据，则读数据
             char recv_buf_max[MAX_BUF_SIZE];
-            memset(recv_buf_max, 0, sizeof(recv_buf_max));
+            bzero(recv_buf_max, sizeof(recv_buf_max));
             int recv_size = recv(ep_ev.data.fd, recv_buf_max, MAX_BUF_SIZE, 0);
             std::cout << "received: " << recv_size << " Bytes" << std::endl;
 
@@ -104,7 +107,7 @@ void CacheServer::existConnection(int event_i) {
                 std::cout << "after SerializeToArray: " << strlen(send_buf_max) << std::endl;
 
                 // 回复客户端
-                int ret = send(ep_ev.data.fd, send_buf_max, strlen(send_buf_max), 0);
+                int ret = send(ep_ev.data.fd, send_buf_max, resp_data.ByteSizeLong(), 0);
                 std::cout << "send_size: " << ret << std::endl;
                 if (ret < 0) {
                     std::cout << "error on send()\n";
@@ -505,7 +508,7 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
         char cache_ip_new[16];
         int cache_port_new;
 
-        if (m_hashslot_new.numNodes() != 0) {
+        if (m_hashslot_new.numNodes() != 0) {   // 是不是应该加个🔓？
             auto kv_self = m_cache.m_map.begin();
             while (kv_self != m_cache.m_map.end()) {
                 std::string key_self = kv_self->first;
@@ -514,7 +517,12 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
                 if (strcmp(cache_ip_new, cache_ip_self) != 0 || cache_port_new != cache_port_self) {
                     // 新hashsort中key不在本机，连接cache_ip_new对应的cache，再向新cache地址发送SET命令
                     CMCData migrating_data;
-                    migrating_data = MakeCommandData(CommandInfo::SET, key_self, m_cache.get(key_self));
+                    std::string str_key_self;
+                    {
+                        std::lock_guard<std::mutex> lock(m_cache_mutex);
+                        str_key_self = m_cache.get(key_self);
+                    }
+                    migrating_data = MakeCommandData(CommandInfo::SET, key_self, str_key_self);
                     std::cout << "will SendCommandData for migrating" << std::endl;
                     CMCData result_data;                                                                      // 访问的结果数据包
                     if (SendCommandData(migrating_data, cache_ip_new, cache_port_new, result_data) == false)  // 发送命令数据包给cache
