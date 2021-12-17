@@ -508,7 +508,12 @@ bool CacheServer::dataMigration(const HashSlotInfo& hs_info, CMCData& response_d
         char cache_ip_new[16];
         int cache_port_new;
 
-        if (m_hashslot_new.numNodes() != 0) {   // 是不是应该加个🔓？
+        int numNodes;
+        {
+            std::lock_guard<std::mutex> lock(m_cache_mutex);
+            numNodes = m_hashslot_new.numNodes();
+        }
+        if (numNodes != 0) {
             auto kv_self = m_cache.m_map.begin();
             while (kv_self != m_cache.m_map.end()) {
                 std::string key_self = kv_self->first;
