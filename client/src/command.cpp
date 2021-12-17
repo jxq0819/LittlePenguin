@@ -139,7 +139,6 @@ bool get_slot(const int& master_fd, HashSlot& slot) {
         slot_cmc_data.ParseFromArray(recv_buf_max, MAX_BUF_SIZE);
 
         // 此处先把数据包信息打印出来
-        cout << "123" << endl;
         string debug_str = slot_cmc_data.DebugString();
         cout << debug_str << endl;
         cout << "DebugString() end!" << endl;

@@ -29,6 +29,9 @@ bool TcpServer::startService(int timeout) { // timeout默认声明了timeout = -
     epoll_event ev;
     bzero(&ev, sizeof(ev));
     ev.data.fd = m_listen_sockfd;
+
+    // 这里要不要也设置一下m_listen_sockfd非堵塞？
+
     ev.events = EPOLLIN | EPOLLET;  // 新来的连接
     if (epoll_ctl(m_epfd, EPOLL_CTL_ADD, m_listen_sockfd, &ev) < 0) {
         return false;

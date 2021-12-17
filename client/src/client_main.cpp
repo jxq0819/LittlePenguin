@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    /* ----------注册SIGQUIT信号，管理员按（Ctrl + \）发送一个SIGQUIT信号，并向master申请下线----------- */
+    /* ----------注册SIGQUIT信号，用户按（Ctrl + \）发送一个SIGQUIT信号，停止test ----------- */
     struct sigaction stop_test_act;
     stop_test_act.sa_handler = stopTest;  // 注册回调函数
     sigemptyset(&stop_test_act.sa_mask);
@@ -156,8 +156,8 @@ int main(int argc, char* argv[]) {
 
     // poll循环监听io事件
     while (1) {
-        int ret = poll(fd_array, 4, -1);  // 这里阻塞等待事件发生
-        if (ret < 0) {
+        int nready = poll(fd_array, 4, -1);
+        if (nready < 0) {
             if (errno == EINTR) {
                 continue;
             }
