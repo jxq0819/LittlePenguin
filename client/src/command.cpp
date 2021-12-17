@@ -97,8 +97,8 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
         close(sockfd_to_cache);  //当完成一次cache访问，就关闭与cache连接的套接字
         cout << "close(sockfd_to_cache);" << endl;
         cout << "--------------------------------------------------------" << endl;
-        return true;
     }
+    return true;
 }
 
 // client主动向master拉取哈希槽信息的函数
