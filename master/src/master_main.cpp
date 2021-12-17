@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
         std::cout << "port error\n";
         exit(-1);
     }
-    // 新建一个MasterServer对象，并设置最大可监听数量为10
+    // 新建一个MasterServer对象，并设置线程池大小
     MasterServer master_server(10);
     master_server.init();
     usleep(1000);   // 1ms

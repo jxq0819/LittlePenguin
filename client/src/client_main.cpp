@@ -317,7 +317,7 @@ int main(int argc, char* argv[]) {
             } else if (command == "TEST" && param_count == 1) {
                 // sprawn a child process to do the test
                 test_stop = false;
-                std::thread test(startTest, 500, 1);       // 输入test开始循环测试，每次生成100个随机key，分别SET/GET，打印GET结果正确的次数，间隔1秒重复，Ctrl+\ 终止测试
+                std::thread test(startTest, 500, 1);       // 输入test开始循环测试，每次生成500个随机key，分别SET/GET，打印GET结果正确的次数，间隔1秒重复，Ctrl+\ 终止测试
                 test.detach();
                 continue;   // ignore the following 
             } else if (command == "TEST" && param_count == 2) {
@@ -326,7 +326,7 @@ int main(int argc, char* argv[]) {
                 }
                 if (param_1 == "INF") {
                     test_stop = false;
-                    std::thread test(startTest, 500, 0);       // 输入test inf开始循环测试，每次生成100个随机key，分别SET/GET，打印GET结果正确的次数，间隔1秒重复，Ctrl+\ 终止测试
+                    std::thread test(startTest, 500, 0);       // 输入test inf开始循环测试，每次生成500个随机key，分别SET/GET，打印GET结果正确的次数，Ctrl+\ 终止测试
                     test.detach();
                     continue;   // ignore the following 
                 }
@@ -384,8 +384,8 @@ void generateRandomKeyValuePairs(std::vector<std::pair<std::string, std::string>
     }
 }
 
-// 间隔1秒，每次随机生成batch_size个key和value，先后进行设置和查询，打印查询正确的次数/总次数
-// int sleep_time（秒）表示是否间隔停顿（便于观察Cache命中数量）
+// 间隔sleep_time秒，每次随机生成batch_size个key和value，先后进行设置和查询，打印查询正确的次数/总次数
+// int sleep_time（秒）表示间隔停顿（便于观察Cache命中数量）
 void startTest(int batch_size, int sleep_time)
 {
     signal(SIGQUIT, stopTest);
