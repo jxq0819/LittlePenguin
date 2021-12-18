@@ -29,13 +29,18 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
 
     // 打印待发送的CMCData信息
     string debug_str = send_data.DebugString();
-    cout << debug_str << endl;
+    // cout << debug_str << endl;
 
     int data_size = send_data.ByteSizeLong();
-    cout << "data_size: " << data_size << endl;
+    // cout << "data_size: " << data_size << endl;
     send_data.SerializeToArray(send_buff, data_size);
-    cout << "after SerializeToArray: " << strlen(send_buff) << endl;
-
+    // cout << "after SerializeToArray: " << strlen(send_buff) << endl;
+    if (send_data.cmd_info().cmd_type() == CommandInfo::SET) {
+        std::cout << "SET" << " " << send_data.cmd_info().param1() << " " << send_data.cmd_info().param2() << std::endl;
+    } else if (send_data.cmd_info().cmd_type() == CommandInfo::GET) {
+        std::cout << "GET" << " " << send_data.cmd_info().param1() << " " << std::endl;
+    }
+    
     if (dst_ip == "" || dst_port == 0) {
         cout << "ip or port is null" << endl;
         return false;
@@ -69,22 +74,22 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
         close(sockfd_to_cache);
         return false;
     }
-    cout << "connect cache server success!" << endl;
+    // cout << "connect cache server success!" << endl;
 
     // 向cache端发送数据
     int send_size = send(sockfd_to_cache, send_buff, data_size, 0);
-    cout << "client_send_size: " << send_size << endl;
+    // cout << "client_send_size: " << send_size << endl;
     if (send_size < 0) {
         std::cout << "GET Command sending failed!" << std::endl;
         return false;
     }
 
     // 读取对端的回复消息
-    std::cout << "RECEIVING DATA!!!" << std::endl;
+    // std::cout << "RECEIVING DATA!!!" << std::endl;
     char recv_buf_max[BUFSIZ];
     bzero(recv_buf_max, sizeof(recv_buf_max));
     int recv_size = recv(sockfd_to_cache, recv_buf_max, BUFSIZ, 0);
-    std::cout << "received: " << recv_size << " Bytes" << std::endl;
+    // std::cout << "received: " << recv_size << " Bytes" << std::endl;
 
     if (recv_size <= 0) {
         // throw std::runtime_error("recv() error \n");
@@ -92,11 +97,16 @@ bool SendCommandData(const CMCData& send_data, const char* dst_ip, u_int16_t dst
     } else {
         // 传出回复数据包，写入信息
         recv_data.ParseFromArray(recv_buf_max, sizeof(recv_buf_max));
-
+        if (recv_data.data_type() == CMCData::ACKINFO) {
+            if (recv_data.ack_info().ack_status() == AckInfo::OK)
+            std::cout << "OK" << std::endl;
+        } else if (recv_data.data_type() == CMCData::KVDATA) {
+            std::cout << "\t" << recv_data.kv_data().value() << std::endl;
+        }
         // 关闭此次查询TCP连接服务
         close(sockfd_to_cache);  //当完成一次cache访问，就关闭与cache连接的套接字
-        cout << "close(sockfd_to_cache);" << endl;
-        cout << "--------------------------------------------------------" << endl;
+        // cout << "close(sockfd_to_cache);" << endl;
+        // cout << "--------------------------------------------------------" << endl;
     }
     return true;
 }

@@ -391,6 +391,9 @@ void startTest(int batch_size, int sleep_time)
     signal(SIGQUIT, stopTest);
     std::vector<std::pair<std::string, std::string>> kv_vec(batch_size);
     while (1) {
+        if (test_stop) {
+            break;
+        }
         generateRandomKeyValuePairs(kv_vec);
         CMCData send_cmc_data, recv_cmc_data;
         char cache_ip[INET_ADDRSTRLEN];
@@ -405,7 +408,8 @@ void startTest(int batch_size, int sleep_time)
                     test_stop = true;
                     break;
                 }
-                cache_addr = hashslot.getCacheAddr(kv.first); std::cout << cache_addr.first << ":" << cache_addr.second;
+                cache_addr = hashslot.getCacheAddr(kv.first);
+                // std::cout << cache_addr.first << ":" << cache_addr.second;
             }
             bzero(cache_ip, INET_ADDRSTRLEN);
             strcpy(cache_ip, cache_addr.first.c_str());  // 从local_hashslot中查询cache地址
@@ -440,7 +444,7 @@ void startTest(int batch_size, int sleep_time)
             if (SendCommandData(send_cmc_data, cache_ip, cache_port, recv_cmc_data) == false) {
                 std::cout << "SendCommandData failed." << std::endl;
             } else {
-                std::cout << recv_cmc_data.kv_data().value() << std::endl;
+                // std::cout << recv_cmc_data.kv_data().value() << std::endl;
                 if (recv_cmc_data.kv_data().value() == kv.second) {
                     ++match_count;
                 }
