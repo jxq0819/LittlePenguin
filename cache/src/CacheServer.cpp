@@ -239,7 +239,7 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
             if (!key.empty() && cmd_info.param2().empty()) {
                 std::string value;
                 {
-                    // 先尝试查询，查询成功则value不为空，后续返回结果包即可，失败则检查是否正在数据迁移
+                    // 先尝试查询，查询成功则value不为空，后续返回结果包即可，失败则对比该key对应的新旧槽地址是否一致
                     std::lock_guard<std::mutex> lock_g(this->m_cache_mutex);  // 为m_cache.get操作上锁
                     std::cout << "will value = m_cache.get(key);" << std::endl;
                     value = m_cache.get(key);
@@ -257,21 +257,20 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                     auto kv_data_ptr = response_data.mutable_kv_data();
                     kv_data_ptr->CopyFrom(kv_data);
                     return true;  // 函数正常返回
-                } else {          // 如果本cache表查询为空，则检查是否正在数据迁移
-                    // 如果正在进行数据迁移，此时客户端查询的那个value有可能已经被转移到新节点了，此时需要帮客户端去查询另外一个节点
-                    if (this->m_is_migrating) {
-                        // 根据客户端提供的key去查询新的哈希槽，向新的cache发送GET命令包，收到回复后再转发给客户端
-                        char another_cache_ip[16];                                                       // 另一台cache主机ip
-                        strcpy(another_cache_ip, this->m_hashslot_new.getCacheAddr(key).first.c_str());  // 从hashslot中查询cache地址
-                        int another_cache_port = this->m_hashslot_new.getCacheAddr(key).second;
-                        // 这是帮忙查询的数据包（发给另外一个cache的）
-                        CMCData another_cmc_data;
-                        another_cmc_data = MakeCommandData(CommandInfo::GET, key, "");
-                        // 发送查询命令数据包到另外一台主机，SendCommandData函数内部会写入收到的结果信息于response_data中并传出
-                        if (SendCommandData(another_cmc_data, another_cache_ip, another_cache_port, response_data) == false)
-                            std::cout << "send GET command to another cache fail." << std::endl;
-                        return true;  // 函数正常返回
-                    } else {
+                } else {
+                    // 如果本cache表查询为空，则失败则对比该key对应的新旧槽地址是否一致
+                    // 查询该key原有的所属地址（也就是本机cache地址）
+                    char cache_ip_self[16];  // 根据hashslot(old)查询的ip
+                    strcpy(cache_ip_self, inet_ntoa(this->m_serv_addr.sin_addr));
+                    int cache_port_self = ntohs(this->m_serv_addr.sin_port);
+                    // 查询该key最新的所属cache地址
+                    char cache_ip_new[16];
+                    strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key).first.c_str());
+                    int cache_port_new = m_hashslot_new.getCacheAddr(key).second;
+
+                    // 对比该key对应的新旧槽地址是否一致
+                    if (!strcmp(cache_ip_new, cache_ip_self) && cache_port_new == cache_port_self) {
+                        // 若新旧地址是同一地址（本机），说明目前此键值对确实不在本机，返回查询空
                         // 查询为空，且cache不在数据数据迁移，返回空结果给客户端即可
                         std::cout << "value: " << value << std::endl;
                         // 封装KvData键值包
@@ -283,7 +282,46 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                         auto kv_data_ptr = response_data.mutable_kv_data();
                         kv_data_ptr->CopyFrom(kv_data);
                         return true;  // 函数正常返回
+                    } else {
+                        // 若不一致，则说明该key由另外一台cache所负责，代理查询即可
+                        char another_cache_ip[16];                                                       // 另一台cache主机ip
+                        strcpy(another_cache_ip, this->m_hashslot_new.getCacheAddr(key).first.c_str());  // 从hashslot中查询cache地址
+                        int another_cache_port = this->m_hashslot_new.getCacheAddr(key).second;
+                        // 这是帮忙查询的数据包（发给另外一个cache的）
+                        CMCData another_cmc_data;
+                        another_cmc_data = MakeCommandData(CommandInfo::GET, key, "");
+                        // 发送查询命令数据包到另外一台主机，SendCommandData函数内部会写入收到的结果信息于response_data中并传出
+                        if (SendCommandData(another_cmc_data, another_cache_ip, another_cache_port, response_data) == false)
+                            std::cout << "send GET command to another cache fail." << std::endl;
+                        return true;  // 函数正常返回
                     }
+
+                    // // 如果正在进行数据迁移，此时客户端查询的那个value有可能已经被转移到新节点了，此时需要帮客户端去查询另外一个节点
+                    // if (this->m_is_migrating) {
+                    //     // 根据客户端提供的key去查询新的哈希槽，向新的cache发送GET命令包，收到回复后再转发给客户端
+                    //     char another_cache_ip[16];                                                       // 另一台cache主机ip
+                    //     strcpy(another_cache_ip, this->m_hashslot_new.getCacheAddr(key).first.c_str());  // 从hashslot中查询cache地址
+                    //     int another_cache_port = this->m_hashslot_new.getCacheAddr(key).second;
+                    //     // 这是帮忙查询的数据包（发给另外一个cache的）
+                    //     CMCData another_cmc_data;
+                    //     another_cmc_data = MakeCommandData(CommandInfo::GET, key, "");
+                    //     // 发送查询命令数据包到另外一台主机，SendCommandData函数内部会写入收到的结果信息于response_data中并传出
+                    //     if (SendCommandData(another_cmc_data, another_cache_ip, another_cache_port, response_data) == false)
+                    //         std::cout << "send GET command to another cache fail." << std::endl;
+                    //     return true;  // 函数正常返回
+                    // } else {
+                    //     // 查询为空，且cache不在数据数据迁移，返回空结果给客户端即可
+                    //     std::cout << "value: " << value << std::endl;
+                    //     // 封装KvData键值包
+                    //     KvData kv_data;
+                    //     kv_data.set_key(key);
+                    //     kv_data.set_value(value);
+                    //     // 注册封装CMCData数据包
+                    //     response_data.set_data_type(CMCData::KVDATA);
+                    //     auto kv_data_ptr = response_data.mutable_kv_data();
+                    //     kv_data_ptr->CopyFrom(kv_data);
+                    //     return true;  // 函数正常返回
+                    // }
                 }
             }
             return false;  // 查询格式不合法的情况，没能正确传出response_data回复数据包
@@ -394,8 +432,30 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                     ack_info_ptr->CopyFrom(ack_info);
                     return true;
                 } else {
-                    // 如果删除失败，则考虑是否正在进行数据迁移，可能导致想删除的那个k-v已经迁移到另外一台cache了
-                    if (this->m_is_migrating) {
+                    // 如果尝试删除失败，则对比该key对应的新旧槽地址是否一致，可能导致想删除的那个k-v已经迁移到另外一台cache了
+                    // 查询该key原有的所属地址（也就是本机cache地址）
+                    char cache_ip_self[16];  // 根据hashslot(old)查询的ip
+                    strcpy(cache_ip_self, inet_ntoa(this->m_serv_addr.sin_addr));
+                    int cache_port_self = ntohs(this->m_serv_addr.sin_port);
+                    // 查询该key最新的所属cache地址
+                    char cache_ip_new[16];
+                    strcpy(cache_ip_new, m_hashslot_new.getCacheAddr(key).first.c_str());
+                    int cache_port_new = m_hashslot_new.getCacheAddr(key).second;
+
+                    if (!strcmp(cache_ip_new, cache_ip_self) && cache_port_new == cache_port_self) {
+                        // 如果新旧地址是同一个，说明此键值对虽然为本地所负责，但本机没保存此kv（其他cache也不会有）
+                        // 返回删除失败给客户端
+                        // 定义一个确认包
+                        AckInfo ack_info;
+                        ack_info.set_ack_type(AckInfo::DELACK);  // 设置确认包类型
+                        ack_info.set_ack_status(AckInfo::FAIL);
+                        // 将确认包注册封装成CMCData数据包
+                        response_data.set_data_type(CMCData::ACKINFO);
+                        auto ack_info_ptr = response_data.mutable_ack_info();
+                        ack_info_ptr->CopyFrom(ack_info);
+                        return true;
+                    } else {
+                        // 如果不同，则去新cache中尝试删除
                         // 根据客户端提供的key去查询新的哈希槽，向新的cache发送DEL命令包，收到回复后再转发给客户端
                         char another_cache_ip[16];                                                       // 另一台cache主机ip
                         strcpy(another_cache_ip, this->m_hashslot_new.getCacheAddr(key).first.c_str());  // 从hashslot中查询cache地址
@@ -407,18 +467,32 @@ bool CacheServer::executeCommand(const CommandInfo& cmd_info, CMCData& response_
                         if (SendCommandData(another_cmc_data, another_cache_ip, another_cache_port, response_data) == false)
                             std::cout << "send DEL commandData to another cache fail." << std::endl;
                         return true;  // 函数正常返回
-                    } else {
-                        // 如果本地删除失败且没有正在进行数据迁移，则返回删除失败ACK数据包
-                        // 定义一个确认包
-                        AckInfo ack_info;
-                        ack_info.set_ack_type(AckInfo::DELACK);  // 设置确认包类型
-                        ack_info.set_ack_status(AckInfo::FAIL);
-                        // 将确认包注册封装成CMCData数据包
-                        response_data.set_data_type(CMCData::ACKINFO);
-                        auto ack_info_ptr = response_data.mutable_ack_info();
-                        ack_info_ptr->CopyFrom(ack_info);
-                        return true;
                     }
+
+                    // if (this->m_is_migrating) {
+                    //     // 根据客户端提供的key去查询新的哈希槽，向新的cache发送DEL命令包，收到回复后再转发给客户端
+                    //     char another_cache_ip[16];                                                       // 另一台cache主机ip
+                    //     strcpy(another_cache_ip, this->m_hashslot_new.getCacheAddr(key).first.c_str());  // 从hashslot中查询cache地址
+                    //     int another_cache_port = this->m_hashslot_new.getCacheAddr(key).second;
+                    //     // 这是请求帮忙的DEL数据包（发给另外一个cache的）
+                    //     CMCData another_cmc_data;
+                    //     another_cmc_data = MakeCommandData(CommandInfo::DEL, key, "");
+                    //     // 发送删除命令数据包到另外一台主机，SendCommandData函数内部会写入收到的结果信息于response_data中并传出
+                    //     if (SendCommandData(another_cmc_data, another_cache_ip, another_cache_port, response_data) == false)
+                    //         std::cout << "send DEL commandData to another cache fail." << std::endl;
+                    //     return true;  // 函数正常返回
+                    // } else {
+                    //     // 如果本地删除失败且没有正在进行数据迁移，则返回删除失败ACK数据包
+                    //     // 定义一个确认包
+                    //     AckInfo ack_info;
+                    //     ack_info.set_ack_type(AckInfo::DELACK);  // 设置确认包类型
+                    //     ack_info.set_ack_status(AckInfo::FAIL);
+                    //     // 将确认包注册封装成CMCData数据包
+                    //     response_data.set_data_type(CMCData::ACKINFO);
+                    //     auto ack_info_ptr = response_data.mutable_ack_info();
+                    //     ack_info_ptr->CopyFrom(ack_info);
+                    //     return true;
+                    // }
                 }
             }
             return false;  // 查询格式不合法的情况，没能正确传出response_data回复数据包
