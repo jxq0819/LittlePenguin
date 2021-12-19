@@ -1,7 +1,0 @@
-# 忽略build和bin文件夹里所有文件（即忽略全部中间文件和可执行文件）
-build/*
-bin/*
-
-# 忽略
-.gitignore
-.vscode
