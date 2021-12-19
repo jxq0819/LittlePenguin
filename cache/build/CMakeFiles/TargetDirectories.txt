@@ -1,0 +1,3 @@
+/home/test/tencent_mini_proj/LittlePenguin/cache/build/CMakeFiles/rebuild_cache.dir
+/home/test/tencent_mini_proj/LittlePenguin/cache/build/CMakeFiles/cache_server.dir
+/home/test/tencent_mini_proj/LittlePenguin/cache/build/CMakeFiles/edit_cache.dir

@@ -1,0 +1,1 @@
+/usr/bin/c++ -pthread CMakeFiles/client.dir/src/HashSlot.cc.o CMakeFiles/client.dir/src/client_main.cpp.o CMakeFiles/client.dir/src/cmcdata.pb.cc.o CMakeFiles/client.dir/src/command.cpp.o CMakeFiles/client.dir/src/crc16.cpp.o -o ../bin/client  -lprotobuf 
